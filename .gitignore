@@ -1,0 +1,11 @@
+node_modules/
+mm/pkg/mm-app/pb_data/
+mm/pkg/mm-app/.env
+mm/pkg/mm-app/*.log
+mm/pkg/mm-app/mm_init.env
+
+# Dữ liệu thật của nhà máy: không đưa lên GitHub
+/*.xlsx
+/*.xls
+# File sinh ra, build lại bằng npm run demo
+mm/demo/Kitting_MM_ChayThu.html

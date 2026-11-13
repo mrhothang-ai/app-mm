@@ -1,0 +1,17 @@
+{
+  "name": "qr-receiver",
+  "private": true,
+  "description": "Trình nhận dữ liệu QR ILSQ v1 (tình trạng PO) — chạy hoàn toàn trên trình duyệt",
+  "scripts": {
+    "lib": "cp node_modules/jsqr/dist/jsQR.js node_modules/pako/dist/pako.min.js node_modules/xlsx/dist/xlsx.full.min.js lib/",
+    "test": "node test/run.cjs && node test/sim.cjs",
+    "e2e": "node test/e2e.cjs",
+    "e2e:mm": "node test/e2e-mm.cjs"
+  },
+  "devDependencies": {
+    "jsqr": "1.4.0",
+    "pako": "2.2.0",
+    "xlsx": "0.18.5",
+    "qrcode-generator": "1.4.4"
+  }
+}

@@ -1,0 +1,22 @@
+services:
+  pb_mm:
+    build: .
+    image: ilsung-mm-pocketbase:0.40.4
+    container_name: pb_mm_app
+    restart: unless-stopped
+    ports:
+      - "${MM_BIND:-0.0.0.0}:${MM_PORT:-8097}:8080"
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - MM_API_KEY=${MM_API_KEY:-}
+    volumes:
+      - ./pb_data:/pb/pb_data
+      - ./pb_migrations:/pb/pb_migrations
+      - ./pb_hooks:/pb/pb_hooks
+      - ./pb_public:/pb/pb_public
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

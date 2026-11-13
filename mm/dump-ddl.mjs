@@ -1,0 +1,12 @@
+import { DatabaseSync } from 'node:sqlite';
+import { SCHEMA, DEFAULT_SETTINGS } from '../kitting-app/lib/db.mjs';
+import { ensureKittingSchema } from '../kitting-app/lib/kitting.mjs';
+import { ensurePlanExtraSchema } from '../kitting-app/lib/plan-extra.mjs';
+import { ensurePoSchema } from '../kitting-app/lib/po-sync.mjs';
+import { ensurePermSchema } from '../kitting-app/lib/perms.mjs';
+const db = new DatabaseSync(':memory:');
+db.exec(SCHEMA); ensureKittingSchema(db); ensurePlanExtraSchema(db); ensurePoSchema(db); ensurePermSchema(db);
+db.exec('DROP TABLE users');
+const rows = db.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, rowid").all();
+const tables = rows.filter(r => r.type === 'table').map(r => r.name);
+console.log(JSON.stringify({ ddl: rows.map(r => r.sql.replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS ').replace('CREATE INDEX ', 'CREATE INDEX IF NOT EXISTS ').replace('CREATE UNIQUE INDEX ', 'CREATE UNIQUE INDEX IF NOT EXISTS ').replace(/IF NOT EXISTS IF NOT EXISTS/g, 'IF NOT EXISTS')), tables, settings: DEFAULT_SETTINGS }, null, 1));

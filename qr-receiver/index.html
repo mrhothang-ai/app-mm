@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%231b5e9c%22/%3E%3Ctext x=%2216%22 y=%2221%22 font-size=%2213%22 font-family=%22Arial%22 font-weight=%22900%22 fill=%22white%22 text-anchor=%22middle%22%3EQR%3C/text%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b5e9c">
+<title>Nhận dữ liệu QR</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#1f2733;--sub:#6b7a8d;--line:#e3e8ef;--brand:#1b5e9c;--brand2:#2d7dd2;--ok:#1a8f4c;--warn:#c4461f;--pending:#d99a00;--accent:#eef4fb}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:860px;margin:0 auto;padding:12px 14px 40px;display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:center;gap:12px;padding:4px 2px}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;font-weight:900;display:grid;place-items:center;font-size:17px;letter-spacing:.5px}
+header h1{font-size:19px;margin:0}header small{color:var(--sub);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin:0 0 10px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button,.btn{min-height:46px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:700;padding:0 16px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+button.primary,.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;flex:1 1 180px;font-size:16px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.btn input{display:none}
+.video{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.video video{width:100%;height:100%;object-fit:cover;display:block}
+.aim{position:absolute;inset:12%;border:3px solid rgba(255,255,255,.85);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.25);pointer-events:none}
+.aim.hit{border-color:#4ade80}
+.vbar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:8px;justify-content:flex-end}
+.vbar button{min-height:40px;background:rgba(0,0,0,.55);color:#fff;border-color:transparent}
+.msg{margin-top:10px;font-size:14px;color:var(--sub);min-height:20px}
+.msg.warn{color:var(--warn);font-weight:600}.msg.ok{color:var(--ok);font-weight:600}
+.big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.big b{font-size:40px;line-height:1;font-variant-numeric:tabular-nums}.big span{color:var(--sub);font-size:16px}
+.tag{display:inline-block;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700;background:var(--accent);color:var(--brand)}
+.tag.ok{background:#e3f5ea;color:var(--ok)}.tag.bad{background:#fbe9e3;color:var(--warn)}.tag.pend{background:#fff4d6;color:#8a6200}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0}
+.bar>i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
+.cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:5px}
+.cell{height:34px;border-radius:7px;background:#e7ebf0;color:#8a96a6;font-size:12px;font-weight:800;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.cell.have{background:var(--ok);color:#fff}.cell.pend{background:var(--pending);color:#fff}
+.cell.flash{animation:fl .6s}@keyframes fl{0%{transform:scale(1.25);box-shadow:0 0 0 4px #4ade80}100%{transform:none}}
+.sub{color:var(--sub);font-size:13px;margin-top:8px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0}
+.kpi{background:var(--accent);border-radius:12px;padding:8px 10px}.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.kpi span{font-size:12px;color:var(--sub)}
+.tbl{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:#f0f4f9;z-index:1;font-size:12px}
+td.n{text-align:right}tr.add td{background:#e8f7ee}tr.chg td{background:#fff6dc}
+.rep{width:100%;font-size:14px}.rep td{white-space:normal}.rep td:last-child{text-align:right;font-weight:700}
+.base{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:13px;color:var(--sub)}
+.base button{min-height:36px;font-size:13px}
+.err{background:#fbe9e3;color:var(--warn);border-radius:10px;padding:8px 10px;font-weight:600;margin-top:8px}
+.mm{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}.mm .primary{width:100%;background:var(--ok);border-color:var(--ok)}
+.mm .sub b{color:var(--ink)}.mm a{color:var(--brand2);font-weight:700}
+.done-box{margin-top:10px;background:#e3f5ea;border:1px solid #b9e3c8;border-radius:12px;padding:10px 12px;font-size:14px}
+.done-box>b{color:var(--ok);display:block;margin-bottom:2px}.done-box summary{cursor:pointer;color:var(--sub);margin-top:6px}
+.done-box .po-ls{max-height:30vh;overflow:auto;font-size:12px;color:var(--sub);word-break:break-word;margin-top:4px}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1f2733;color:#fff;padding:10px 16px;border-radius:12px;max-width:92vw;font-size:14px;z-index:9;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div class="logo">QR</div><div><h1>Nhận dữ liệu QR</h1><small>Tình trạng PO · IL-Sung Tech</small></div></header>
+
+  <section class="card">
+    <h2>Quét</h2>
+    <div class="btns">
+      <button type="button" class="primary" id="btnCam">📷 Bật camera</button>
+      <label class="btn" id="btnImg">🖼️ Chọn ảnh QR<input type="file" id="fileImg" accept="image/*" multiple></label>
+      <button type="button" id="btnReset">Làm lại</button>
+    </div>
+    <div class="video" id="videoBox" hidden>
+      <video id="video" muted playsinline></video><div class="aim" id="aim"></div>
+      <div class="vbar"><button type="button" id="btnTorch" hidden>🔦 Đèn</button><button type="button" id="btnCamOff">Tắt camera</button></div>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="done-box" id="mmDone" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Tiến độ</h2>
+    <div class="big"><b id="cnt">0 / –</b><span>gói</span><span class="tag" id="state">Chờ bắt tay</span></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="cells" id="cells"></div>
+    <div class="sub" id="info">Quét QR bất kỳ để bắt đầu — thứ tự không quan trọng.</div>
+  </section>
+
+  <section class="card" id="resCard" hidden>
+    <h2>Kết quả</h2>
+    <div class="btns" style="gap:6px;align-items:center"><span class="tag" id="shaTag"></span><span class="tag" id="modeTag"></span><span class="tag" id="nTag"></span></div>
+    <div id="resErr"></div>
+    <div class="btns" style="margin-top:10px">
+      <button type="button" id="btnXlsx">⬇ Tải Excel</button><button type="button" id="btnJson">⬇ Tải JSON</button>
+      <button type="button" id="btnTsv">📋 Copy cho AI</button><button type="button" id="btnShare" hidden>↗ Chia sẻ</button>
+    </div>
+    <div class="mm" id="mmBox" hidden><button type="button" class="primary" id="btnMm">⬆ Cập nhật vào app MM</button><div class="sub" id="mmInfo"></div></div>
+    <div class="sub" id="deltaInfo"></div>
+    <div class="tbl"><table id="tbl"></table></div>
+  </section>
+
+  <section class="card" id="repCard" hidden>
+    <h2>Báo cáo phiên</h2>
+    <table class="rep" id="rep"></table>
+  </section>
+
+  <section class="card">
+    <div class="base"><span id="baseInfo">Bản gốc trên máy: chưa có</span><button type="button" id="btnClearBase">Xoá bản gốc trên máy</button></div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="lib/jsQR.js"></script>
+<script src="lib/pako.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="ilsq.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtN = n => Number(n).toLocaleString('vi-VN');
+const BASE_KEY = 'ilsq_base';
+let toastT = null;
+function toast(t) { const e = $('#toast'); e.textContent = t; e.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { e.hidden = true; }, 3500); }
+function msg(t, cls = '') { const e = $('#msg'); e.textContent = t; e.className = 'msg ' + cls; }
+
+/* ---------- bộ nhận ---------- */
+let view = null;   // { res, rows, schema, merged, marks, removed, epoch }
+const R = ILSQ.createReceiver({
+  inflateRaw: u8 => pako.inflateRaw(u8),
+  onEvent(type, info) {
+    if (type === 'newSession') toast(`Phát hiện lần gửi mới (file ${info.to}) — bỏ phiên cũ ${info.from}, nhận phiên mới`);
+    if (type === 'done') { stopCam(); onDone(info); }
+    if (type !== 'done') paint();
+  }
+});
+function feed(text, from) {
+  const r = R.handleQrText(text);
+  if (r.status === 'new' || r.status === 'handshake' || r.status === 'pending') {
+    if (from === 'cam') { try { navigator.vibrate && navigator.vibrate(30); } catch {} const a = $('#aim'); a.classList.add('hit'); setTimeout(() => a.classList.remove('hit'), 250); }
+    flashIdx = r.idx;
+  }
+  return r;
+}
+let flashIdx = null;
+function paint() {
+  const p = R.progress(), total = p.total, got = p.have.length + (p.hs ? 1 : 0);
+  $('#cnt').textContent = `${total ? got : p.pendingCount} / ${total || '–'}`;
+  const st = $('#state');
+  if (p.done) { st.textContent = 'Hoàn tất'; st.className = 'tag ok'; }
+  else if (p.hs) { st.textContent = `Đã bắt tay · bản #${p.hs.epoch}`; st.className = 'tag'; }
+  else { st.textContent = 'Chờ bắt tay'; st.className = 'tag pend'; }
+  $('#bar').style.width = total ? `${Math.round(got / total * 100)}%` : '0%';
+  const have = new Set(p.have), pend = new Set(p.pending), n = total || Math.max(0, ...p.pending) + 1;
+  let h = `<div class="cell ${p.hs ? 'have' : ''} ${flashIdx === 0 ? 'flash' : ''}">HS</div>`;
+  for (let i = 1; i < n; i++) h += `<div class="cell ${have.has(i) ? 'have' : pend.has(i) ? 'pend' : ''} ${flashIdx === i ? 'flash' : ''}">${i}</div>`;
+  $('#cells').innerHTML = (total || p.pendingCount) ? h : '';
+  flashIdx = null;
+  $('#info').textContent = !p.hs && p.pendingCount ? `Đã giữ ${p.pendingCount} gói — cần quét gói HS`
+    : p.hs ? `File ${p.fileId} · ${fmtN(p.hs.n)} PO · ${total - 1} gói dữ liệu${p.done ? '' : ` · còn thiếu ${total - got}`}` : 'Quét QR bất kỳ để bắt đầu — thứ tự không quan trọng.';
+}
+
+/* ---------- 6. quét ảnh ---------- */
+const hasBD = 'BarcodeDetector' in window;
+let bd = null;
+async function detector() {
+  if (!hasBD) return null;
+  if (bd !== null) return bd || null;
+  try { const f = await BarcodeDetector.getSupportedFormats(); bd = f.includes('qr_code') ? new BarcodeDetector({ formats: ['qr_code'] }) : false; } catch { bd = false; }
+  return bd || null;
+}
+const nextFrame = () => new Promise(r => setTimeout(r));
+async function loadBitmap(file) {
+  if (window.createImageBitmap) { try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch {} }
+  const url = URL.createObjectURL(file);
+  try { const img = new Image(); img.src = url; await img.decode(); return img; } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
+async function scanImageFile(file) {
+  const before = R.state.seen.size, found = new Set();
+  try {
+    const bmp = await loadBitmap(file);
+    let W = bmp.width, H = bmp.height; const k = Math.min(1, 2600 / Math.max(W, H)); W = Math.round(W * k); H = Math.round(H * k);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;   // mỗi ảnh 1 canvas riêng
+    const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0, W, H); if (bmp.close) bmp.close();
+    const d = await detector();
+    if (d) { try { for (const c of await d.detect(cv)) if (c.rawValue) found.add(c.rawValue); } catch {} }
+    for (const t of ILSQ.handshakeFirst(found)) feed(t, 'img');
+    paint();
+    if (!R.state.done) await ILSQ.tileScan(W, H, (x, y, w, h) => ctx.getImageData(x, y, w, h), jsQR, {
+      onFound: t => { found.add(t); feed(t, 'img'); },
+      erase: (x, y, w, h) => { ctx.fillStyle = '#fff'; ctx.fillRect(x, y, w, h); },
+      done: () => R.state.done,
+      yield: async () => { paint(); await nextFrame(); }
+    });
+  } catch (e) { msg(`Ảnh ${file.name}: lỗi đọc ảnh (${e.message || e})`, 'warn'); return { k: 0, m: 0, err: true }; }
+  paint();
+  return { k: found.size, m: R.state.seen.size - before };
+}
+$('#fileImg').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  if (!files.length) return;
+  $('#btnImg').classList.add('busy');
+  let last = null;
+  for (let i = 0; i < files.length; i++) {   // TUẦN TỰ
+    if (R.state.done) break;
+    msg(`Đang đọc ảnh ${i + 1}/${files.length}…`);
+    await nextFrame();
+    last = await scanImageFile(files[i]);
+    if (last.err) continue;
+    if (files.length === 1 || !last.k) msg(last.k ? `Ảnh này đọc được ${last.k} mã (${last.m} mã mới)` : 'Ảnh này không đọc được mã nào — chụp gần / rõ hơn, tránh lóa màn hình', last.k ? '' : 'warn');
+  }
+  if (files.length > 1 && last && !last.err) msg(`Đã đọc ${files.length} ảnh`);
+  if (R.state.done) msg('Đã đủ gói ✔', 'ok');
+});
+
+/* ---------- 5. camera ---------- */
+let stream = null, track = null, camOn = false, lastScan = 0, torch = false;
+const camCv = document.createElement('canvas'), camCtx = camCv.getContext('2d', { willReadFrequently: true });
+async function startCam() {
+  if (R.state.done) return toast('Đã hoàn tất — bấm Làm lại để nhận lần gửi mới');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) return msg('Camera cần mở trang qua HTTPS (GitHub Pages). Bạn vẫn có thể dùng nút Chọn ảnh QR.', 'warn');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) {
+    return msg(e && e.name === 'NotAllowedError' ? 'Chưa được cấp quyền camera — cho phép camera trong cài đặt trình duyệt, hoặc dùng nút Chọn ảnh QR.' : 'Camera cần mở trang qua HTTPS (GitHub Pages). Bạn vẫn có thể dùng nút Chọn ảnh QR.', 'warn');
+  }
+  const v = $('#video'); v.setAttribute('playsinline', ''); v.srcObject = stream;
+  try { await v.play(); } catch {}
+  track = stream.getVideoTracks()[0];
+  try { $('#btnTorch').hidden = !(track.getCapabilities && track.getCapabilities().torch); } catch { $('#btnTorch').hidden = true; }
+  camOn = true; $('#videoBox').hidden = false; $('#btnCam').textContent = '📷 Camera đang bật'; $('#btnCam').disabled = true;
+  msg('Hướng camera vào QR trên màn hình máy gửi');
+  requestAnimationFrame(loop);
+}
+function stopCam() {
+  camOn = false; torch = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null; $('#video').srcObject = null;
+  $('#videoBox').hidden = true; $('#btnCam').textContent = '📷 Bật camera'; $('#btnCam').disabled = false;
+}
+let busy = false;
+async function loop(ts) {
+  if (!camOn) return;
+  requestAnimationFrame(loop);
+  if (busy || ts - lastScan < 80) return;   // ~12 lần/giây
+  const v = $('#video'); if (v.readyState < 2 || !v.videoWidth) return;
+  lastScan = ts; busy = true;
+  try {
+    const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)), W = Math.round(v.videoWidth * k), H = Math.round(v.videoHeight * k);
+    if (camCv.width !== W) { camCv.width = W; camCv.height = H; }
+    camCtx.drawImage(v, 0, 0, W, H);
+    const d = await detector();
+    if (d) { for (const c of await d.detect(camCv)) if (c.rawValue) feed(c.rawValue, 'cam'); }
+    else { const c = jsQR(camCtx.getImageData(0, 0, W, H).data, W, H, { inversionAttempts: 'dontInvert' }); if (c && c.data) feed(c.data, 'cam'); }
+    paint();
+  } catch {} finally { busy = false; }
+}
+$('#btnCam').addEventListener('click', startCam);
+$('#btnCamOff').addEventListener('click', stopCam);
+$('#btnTorch').addEventListener('click', async () => { if (!track) return; torch = !torch; try { await track.applyConstraints({ advanced: [{ torch }] }); } catch { toast('Máy không hỗ trợ bật đèn'); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && camOn) stopCam(); });
+// Về màn ban đầu, sẵn sàng nhận lần gửi mới.
+function resetAll() { stopCam(); R.reset(); view = null; $('#resCard').hidden = true; $('#repCard').hidden = true; msg(''); paint(); paintMm(); }
+$('#btnReset').addEventListener('click', () => { $('#mmDone').hidden = true; resetAll(); });
+
+/* ---------- 7. bản gốc + delta ---------- */
+function loadBase() { try { const b = JSON.parse(localStorage.getItem(BASE_KEY) || 'null'); return b && b.map && b.order ? b : null; } catch { return null; } }
+function saveBase(b) { try { localStorage.setItem(BASE_KEY, JSON.stringify(b)); return true; } catch { toast('Không lưu được bản gốc trên máy (bộ nhớ trình duyệt bị chặn / đầy)'); return false; } }
+function paintBase() {
+  const b = loadBase();
+  $('#baseInfo').textContent = b ? `Bản gốc hiện tại: #${b.epoch} · ${fmtN(b.order.length)} PO · lưu lúc ${new Date(b.savedAt).toLocaleString('vi-VN')}` : 'Bản gốc trên máy: chưa có';
+  $('#btnClearBase').hidden = !b;
+}
+$('#btnClearBase').addEventListener('click', () => {
+  const b = $('#btnClearBase');
+  if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Bấm lần nữa để xoá'; setTimeout(() => { b.dataset.sure = ''; b.textContent = 'Xoá bản gốc trên máy'; }, 3000); return; }
+  try { localStorage.removeItem(BASE_KEY); } catch {}
+  b.dataset.sure = ''; b.textContent = 'Xoá bản gốc trên máy'; paintBase(); toast('Đã xoá bản gốc trên máy');
+});
+
+/* ---------- 4.3 kết quả ---------- */
+function onDone(res) {
+  $('#resCard').hidden = false; $('#repCard').hidden = false;
+  const sha = $('#shaTag');
+  sha.textContent = res.shaOk === true ? '✔ SHA-256 khớp' : res.shaOk === false ? '✖ SHA-256 KHÔNG khớp' : '⚠ Không kiểm được SHA-256';
+  sha.className = 'tag ' + (res.shaOk === true ? 'ok' : res.shaOk === false ? 'bad' : 'pend');
+  $('#resErr').innerHTML = res.error ? `<div class="err">${esc(res.error)}</div><div class="btns" style="margin-top:8px"><button type="button" onclick="document.querySelector('#btnReset').click()">Làm lại</button></div>` : '';
+  view = null; $('#deltaInfo').textContent = '';
+  if (res.ok) {
+    const obj = res.obj, epoch = res.hs.epoch;
+    view = { res, schema: obj.s, rows: res.rows, mode: obj.m, epoch, marks: new Map(), removed: [], merged: false };
+    if (obj.m === 'delta') {
+      const m = ILSQ.mergeDelta(loadBase(), obj, res.rows, epoch);
+      if (!m.ok) { $('#deltaInfo').innerHTML = `<div class="err">${esc(m.error)}</div>Đang hiện ${fmtN(res.rows.length)} dòng delta nhận được (chưa ghép).`; }
+      else {
+        if (res.shaOk === true) saveBase(m.base);
+        Object.assign(view, { rows: ILSQ.baseRows(m.base), schema: m.base.schema, merged: true, removed: m.removed });
+        m.added.forEach(k => view.marks.set(k, 'add')); m.changed.forEach(k => view.marks.set(k, 'chg'));
+        $('#deltaInfo').innerHTML = `Đã ghép delta vào bản gốc #${obj.b} → #${epoch}: <b>${m.added.length}</b> mới · <b>${m.changed.length}</b> sửa · <b>${m.removed.length}</b> xoá${m.removed.length ? ` (${esc(m.removed.join(', '))})` : ''}${res.shaOk === true ? '' : ' · <b>chưa lưu</b> (SHA chưa kiểm được)'}`;
+      }
+    } else if (res.shaOk === true) saveBase(ILSQ.baseFromFull(obj, res.rows, epoch));
+    else $('#deltaInfo').textContent = 'Chưa lưu làm bản gốc vì SHA-256 chưa khớp / chưa kiểm được.';
+    $('#modeTag').textContent = obj.m === 'delta' ? `Delta · bản #${epoch} (gốc #${obj.b})` : `Full · bản #${epoch}`;
+    $('#nTag').textContent = `${fmtN(view.rows.length)} PO`;
+    renderTable();
+  } else { $('#modeTag').textContent = ''; $('#nTag').textContent = ''; $('#tbl').innerHTML = ''; }
+  ['#btnXlsx', '#btnJson', '#btnTsv', '#btnShare'].forEach(s => { $(s).disabled = !view; });
+  $('#btnShare').hidden = !(navigator.canShare && view);
+  const s = res.stats, rate = s.valid + s.bad ? s.valid / (s.valid + s.bad) * 100 : 0;
+  $('#rep').innerHTML = [
+    ['Số gói', res.total], ['Gói hợp lệ', s.valid], ['Gói trùng bỏ qua', s.dup], ['Gói lỗi', s.bad], ['Gói khác phiên', s.foreign],
+    ['Tỷ lệ nhận thành công', `${rate.toFixed(1)}%`], ['Thời gian truyền', `${((s.t1 - s.t0) / 1000).toFixed(1)} giây`],
+    ['Dung lượng', `${fmtN(res.zipBytes)} B nén → ${fmtN(res.rawBytes)} B`], ['File', res.fileId]
+  ].map(([a, b]) => `<tr><td>${a}</td><td>${esc(b)}</td></tr>`).join('');
+  paintBase(); paint(); paintMm();
+  msg(res.ok ? 'Đã nhận đủ dữ liệu ✔' : 'Nhận đủ gói nhưng dữ liệu lỗi', res.ok ? 'ok' : 'warn');
+}
+function renderTable() {
+  const v = view, MAX = 3000, rows = v.rows.slice(0, MAX);
+  const isNum = x => typeof x === 'number';
+  $('#tbl').innerHTML = `<thead><tr><th>#</th>${v.schema.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) =>
+    `<tr class="${v.marks.get(String(r[0])) || ''}"><td>${i + 1}</td>${r.map((x, j) => `<td class="${isNum(x) && j ? 'n' : ''}">${x === null ? '' : esc(j === 0 ? String(x) : isNum(x) ? fmtN(x) : x)}</td>`).join('')}</tr>`).join('')}</tbody>`
+    + (v.rows.length > MAX ? `<tfoot><tr><td colspan="${v.schema.length + 1}">… còn ${fmtN(v.rows.length - MAX)} dòng (có đủ trong file Excel / JSON)</td></tr></tfoot>` : '');
+}
+
+/* ---------- 8. xuất ---------- */
+const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; };
+function download(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function xlsxFile() {
+  const aoa = [view.schema, ...view.rows], ws = XLSX.utils.aoa_to_sheet(aoa);
+  for (let r = 1; r < aoa.length; r++) { const c = ws[XLSX.utils.encode_cell({ r, c: 0 })]; if (c && c.t === 'n') c.z = '0'; }   // PO không thành 1.1E+10
+  ws['!cols'] = view.schema.map((_, i) => ({ wch: i === 0 ? 14 : 12 }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'PO status');
+  const name = `PO_status_epoch${view.epoch}_${stamp()}.xlsx`;
+  return { name, blob: new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }) };
+}
+$('#btnXlsx').addEventListener('click', () => { if (!view) return; const f = xlsxFile(); download(f.blob, f.name); });
+$('#btnJson').addEventListener('click', () => {
+  if (!view) return;
+  const r = view.res, o = { schema: view.schema, rows: view.rows, mode: view.mode, merged: view.merged, epoch: view.epoch, fileId: r.fileId, sha256: r.sha || null, shaOk: r.shaOk, receivedAt: new Date().toISOString() };
+  download(new Blob([JSON.stringify(o, null, 2)], { type: 'application/json' }), `PO_status_epoch${view.epoch}_${stamp()}.json`);
+});
+$('#btnTsv').addEventListener('click', async () => {
+  if (!view) return;
+  const cell = x => x === null || x === undefined ? '' : String(x).replace(/[\t\r\n]+/g, ' ');
+  const tsv = [view.schema, ...view.rows].map(r => r.map(cell).join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); }
+  catch {
+    const ta = document.createElement('textarea'); ta.value = tsv; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch {} ta.remove();
+    if (!ok) return toast('Trình duyệt chặn copy — dùng Tải Excel / JSON');
+  }
+  toast(`Đã copy ${fmtN(view.rows.length)} dòng (TSV) — dán cho AI`);
+});
+$('#btnShare').addEventListener('click', async () => {
+  if (!view) return;
+  const f = xlsxFile(), file = new File([f.blob], f.name, { type: f.blob.type });
+  if (!navigator.canShare || !navigator.canShare({ files: [file] })) return toast('Máy không hỗ trợ chia sẻ file — dùng Tải Excel');
+  try { await navigator.share({ files: [file], title: f.name }); } catch {}
+});
+
+/* ---------- gửi vào app Kitting MM (khi trang được phục vụ từ app MM: http://<máy chủ>:8097/qr/) ---------- */
+// Dùng chung phiên đăng nhập của app MM (localStorage "mm_token", cùng origin) → POST /api/mm/po/production (quyền Cập nhật sản xuất).
+const MM = { hosted: /\/qr\/(index\.html)?$/.test(location.pathname) && location.protocol !== 'file:', token: '', sent: '' };
+const mmToken = () => { try { MM.token = localStorage.getItem('mm_token') || ''; } catch { MM.token = ''; } return MM.token; };   // đọc lại mỗi lần: có thể vừa đăng nhập ở tab khác
+const hkey = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const MM_COLS = { po: ['po', 'pono', 'prodorderno'], prod: ['prodq', 'productionqty', 'production', 'confirmqty'], remain: ['remain', 'remainqty'], status: ['status', 'planstatus'] };
+function mmRows() {
+  const ix = {}; view.schema.forEach((h, i) => { for (const [k, al] of Object.entries(MM_COLS)) if (!(k in ix) && al.includes(hkey(h))) ix[k] = i; });
+  if (ix.po === undefined || ix.prod === undefined) throw new Error('Dữ liệu QR thiếu cột PO / ProdQ.');
+  let skipped = 0;
+  const rows = view.rows.filter(r => { const ok = r[ix.prod] !== null && r[ix.prod] !== undefined && r[ix.prod] !== ''; if (!ok) skipped++; return ok; })
+    .map(r => ({ po: String(r[ix.po]), productionQty: r[ix.prod], remainQty: ix.remain === undefined ? null : r[ix.remain], status: ix.status === undefined || r[ix.status] === null ? '' : String(r[ix.status]) }));
+  return { rows, skipped };
+}
+function paintMm() {
+  $('#mmBox').hidden = !MM.hosted || !view;
+  if (!MM.hosted || !view) return;
+  const b = $('#btnMm'), info = $('#mmInfo'), key = view.res.fileId + '#' + view.epoch;
+  if (!mmToken()) { b.disabled = false; info.innerHTML = 'Chưa đăng nhập app MM trên máy này — <a href="../" target="_blank" rel="noopener">mở app MM, đăng nhập</a> rồi quay lại bấm nút trên.'; return; }
+  if (view.res.shaOk !== true) { b.disabled = true; info.textContent = 'SHA-256 không khớp — không gửi được dữ liệu hỏng, hãy nhận lại.'; return; }
+  b.disabled = MM.sent === key;
+  if (MM.sent !== key) info.textContent = view.mode === 'delta' && !view.merged ? 'Bản delta chưa ghép bản gốc: chỉ cập nhật các PO có trong bản này.' : `Gửi ${fmtN(view.rows.length)} PO vào cổng Cập nhật sản xuất của app MM.`;
+}
+$('#btnMm').addEventListener('click', async () => {
+  if (!view) return;
+  if (!mmToken()) return paintMm();
+  const b = $('#btnMm'), info = $('#mmInfo'), key = view.res.fileId + '#' + view.epoch;
+  let data;
+  try { data = mmRows(); } catch (e) { info.textContent = e.message; return; }
+  if (!data.rows.length) { info.textContent = 'Không có dòng nào có ProdQ để cập nhật.'; return; }
+  b.disabled = true; info.textContent = 'Đang gửi…';
+  const source = `QR #${view.epoch}${view.mode === 'delta' && !view.merged ? ' delta' : ''} · file ${view.res.fileId}`;
+  try {
+    const res = await fetch('../api/mm/po/production', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: MM.token }, body: JSON.stringify({ source, rows: data.rows }) });
+    const r = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error('Phiên đăng nhập app MM đã hết — mở app MM đăng nhập lại.');
+    if (res.status === 403) throw new Error('Tài khoản không có quyền Cập nhật sản xuất trong app MM.');
+    if (!res.ok) throw new Error(r.error || `Lỗi ${res.status}`);
+    MM.sent = key;
+    const unknown = r.unknown || [], cancelled = r.cancelled || [], decreased = r.decreased || [];
+    const list = (title, a) => a.length ? `<details><summary>${title} (${fmtN(a.length)})</summary><div class="po-ls">${a.slice(0, 1000).map(esc).join(' · ')}${a.length > 1000 ? ' …' : ''}</div></details>` : '';
+    const sum = `<b>✔ Đã cập nhật vào app MM — ${esc(source)} · ${new Date().toLocaleTimeString('vi-VN')}</b>`
+      + `Cập nhật <b>${fmtN(r.updated)}</b> PO · ${fmtN(r.unchanged)} không đổi${unknown.length ? ` · <b>${fmtN(unknown.length)}</b> PO chưa có trong app` : ''}${cancelled.length ? ` · ${cancelled.length} Cancel` : ''}${decreased.length ? ` · ${decreased.length} PO giảm sản lượng` : ''}${data.skipped ? ` · bỏ qua ${data.skipped} dòng chưa có ProdQ` : ''}`
+      + list('PO chưa có trong app MM (Planner chưa nhập)', unknown) + list('PO giảm sản lượng', decreased) + list('PO Cancel', cancelled);
+    // Gửi xong → về màn ban đầu để quét lần mới; kết quả giữ ở khung xanh trong thẻ Quét.
+    resetAll();
+    const done = $('#mmDone'); done.innerHTML = sum; done.hidden = false;
+    msg('Sẵn sàng nhận lần gửi mới');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast('Đã cập nhật vào app MM');
+  } catch (e) { b.disabled = false; info.textContent = e.message || String(e); }
+});
+
+paint(); paintBase();
+if (MM.hosted && !window.isSecureContext) {   // trong app MM (HTTP nội bộ) camera không chạy được → chọn / chụp ảnh là cách chính
+  $('#btnCam').hidden = true; $('#btnImg').classList.add('primary');
+  msg('Chụp ảnh màn hình máy gửi (1 ảnh chứa được nhiều QR) hoặc chọn ảnh có sẵn → đủ gói thì bấm "Cập nhật vào app MM".');
+} else if (!window.isSecureContext) msg('Trang mở qua HTTP: camera không dùng được — bấm Chọn ảnh QR (điện thoại cho chụp ảnh trực tiếp hoặc chọn ảnh có sẵn).', 'warn');
+</script>
+</body>
+</html>

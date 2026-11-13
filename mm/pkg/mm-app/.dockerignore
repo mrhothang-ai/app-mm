@@ -1,0 +1,7 @@
+pb_data
+.env
+*.md
+deploy*
+setup*
+mm_init.env
+*.ps1

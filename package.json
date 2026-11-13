@@ -1,0 +1,23 @@
+{
+  "name": "mm-kitting",
+  "private": true,
+  "type": "module",
+  "description": "App Kitting vật liệu (MM) - IL-Sung Tech - mã nguồn: nghiệp vụ + giao diện + gói PocketBase",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "cd mm && node build.mjs",
+    "demo": "cd mm && node demo/build-demo.mjs",
+    "migration": "cd mm && node dump-ddl.mjs > ddl.json && node gen-migration.mjs",
+    "all": "npm run build && npm run demo",
+    "test": "cd mm && bash fresh.sh"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "sql.js": "1.15.2",
+    "exceljs": "4.4.0",
+    "bcryptjs": "^3.0.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

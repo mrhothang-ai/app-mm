@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174ea6">
+  <title>Quản lý Kitting vật liệu</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css?v=pb33">
+</head>
+<body>
+  <main id="loginView" class="login-page" hidden>
+    <div class="login-wrap">
+      <form id="loginForm" class="login-card">
+        <div class="brand-mark">KIT</div>
+        <h1>Quản lý Kitting vật liệu</h1>
+        <label>Mã nhân viên<input name="username" autocomplete="username" autocapitalize="characters" required maxlength="30"></label>
+        <label>Mật khẩu<span class="pw-wrap"><input name="password" type="password" autocomplete="current-password" required maxlength="64"><button type="button" class="pw-eye" aria-label="Hiện mật khẩu">👁</button></span></label>
+        <button class="primary" type="submit">Đăng nhập</button>
+        <div id="loginMessage" class="message" role="status"></div>
+        <div id="demoLogin" hidden><p class="hint">Bản chạy thử — bấm 1 tài khoản để đăng nhập:</p><div class="demo-users"></div></div>
+        <p id="setupNote" class="hint" hidden>Chưa có tài khoản nào. Quản trị vào trang quản trị PocketBase (<code>/_/</code>) → bảng <b>users</b> → tạo tài khoản đầu tiên: username = Mã NV (chữ in hoa), Password = mật khẩu từ 8 ký tự có chữ và số, role = admin, active = bật.</p>
+      </form>
+    </div>
+  </main>
+
+  <div id="appView" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark small">KIT</span><strong>Quản lý Kitting vật liệu</strong><span id="demoBadge" class="pill warn" hidden>BẢN THỬ</span></div>
+      <div class="account"><button type="button" id="whoami" class="quiet who" title="Đổi mật khẩu"></button><button id="logoutBtn" class="quiet">Đăng xuất</button></div>
+    </header>
+    <nav class="tabs" aria-label="Chức năng">
+      <button class="tab active" data-tab="board">Kế hoạch kitting</button>
+      <button class="tab" data-tab="kho">Kho</button>
+      <button class="tab kit-tab" data-tab="kitpad">Kitting</button>
+      <button class="tab" data-tab="prod">Sản xuất</button>
+      <button class="tab" data-tab="supply">Cấp vật liệu</button>
+      <button class="tab" data-tab="report">Báo cáo</button>
+      <button class="tab" data-tab="lines">Line &amp; tham số</button>
+      <button class="tab" data-tab="po">Dữ liệu PO</button>
+      <button class="tab" data-tab="bom">BOM &amp; Model</button>
+      <button class="tab" data-tab="guide">Hướng dẫn</button>
+      <button class="tab" data-tab="admin" hidden>Quản trị</button>
+    </nav>
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <!-- KẾ HOẠCH KITTING -->
+    <section id="panel-board" class="panel active">
+      <div class="page-head">
+        <h1>Kế hoạch kitting</h1>
+        <div class="tools">
+          <input id="boardFrom" type="date" aria-label="Từ ngày">
+          <select id="boardDays" aria-label="Số ngày"><option value="3">3 ngày</option><option value="4" selected>4 ngày</option><option value="5">5 ngày</option><option value="7">7 ngày</option></select>
+          <button id="boardToday" class="secondary" type="button">Hôm nay</button>
+          <button id="boardAuto" class="secondary" type="button" hidden>⚡ Tự động xếp</button>
+          <button id="boardImport" class="secondary" type="button" hidden title="Nhập kế hoạch kitting Planner chia / gộp PO trên Excel">📥 Nhập KH Excel</button><input type="file" id="boardImportFile" accept=".xlsx,.xlsm,.xls" hidden>
+          <button id="boardUndo" class="secondary" type="button" hidden>↶ Hoàn tác</button>
+          <button id="boardReload" class="secondary icon" type="button" aria-label="Tải lại">⟳</button>
+        </div>
+      </div>
+      <div id="boardKpis" class="kpis"></div>
+      <div id="vlnBars" class="vln-bars"></div>
+      <div id="selectionBar" class="selection-bar" hidden>
+        <span id="selectionText"></span>
+        <div id="selActions" class="sel-actions"></div>
+      </div>
+      <div id="boardOutside" class="hint outside-note"></div>
+      <div id="colSwitch" class="col-switch" role="tablist" aria-label="Chọn cột"></div>
+      <div class="day-filter" id="dayFilter">
+        <span class="df-label">Lọc cột ngày</span>
+        <select id="dfModel" data-ta aria-label="Model"><option value="">Tất cả Model</option></select>
+        <select id="dfCode" data-ta aria-label="Model Code"><option value="">Tất cả Code</option></select>
+        <select id="dfStage" aria-label="Trạng thái kitting"><option value="">Mọi trạng thái</option><option value="pending">Chưa kitting</option><option value="progress">Đang kitting</option><option value="ready">Sẵn sàng giao</option><option value="delivered">Đã giao</option></select>
+        <input id="dfSearch" type="search" placeholder="Tìm PO, Kit, Line" autocomplete="off">
+        <button type="button" id="dfClear" class="link" hidden>Bỏ lọc</button>
+      </div>
+      <div class="board" id="board">
+        <div class="column pool-column" data-col="pool">
+          <div class="column-head">
+            <div><strong>Chưa lập kế hoạch</strong><span class="head-r"><button type="button" class="sel-all" data-list="poolList" title="Chọn / bỏ chọn tất cả PO đang hiển thị">☐ Tất cả</button><span id="poolCount" class="count"></span></span></div>
+            <div class="pool-filters">
+              <select id="poolModel" data-ta aria-label="Lọc Model"><option value="">Tất cả Model</option></select>
+              <select id="poolSort" aria-label="Sắp xếp"><option value="start">Theo Plan Start</option><option value="model">Theo Model</option><option value="po">Theo số PO</option></select>
+              <input id="poolSearch" type="search" placeholder="Tìm PO" autocomplete="off">
+            </div>
+          </div>
+          <div id="poolList" class="card-list" data-day=""></div>
+        </div>
+        <div id="dayColumns" class="day-columns"></div>
+      </div>
+    </section>
+
+    <!-- KHO -->
+    <section id="panel-kho" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Kho</h1>
+          <div class="seg" id="khoTabs" role="tablist">
+            <button type="button" data-k="dispatch" class="active">Điều phối</button><button type="button" data-k="VLN">VLN</button><button type="button" data-k="HV">Rear + VLĐT</button><button type="button" data-k="lines">Giao line</button><button type="button" data-k="debts">Nợ</button><button type="button" data-k="materials">Tổng hợp VL</button><button type="button" data-k="stock">Tồn ERP</button><button type="button" data-k="history">Lịch sử</button>
+          </div>
+        </div>
+        <div class="ecn-alert" data-ecn hidden></div>
+        <div class="rc-alert" id="khoRcAlert" hidden></div>
+        <div id="khoKpis" class="kpis"></div>
+        <div class="list-tools"><input type="search" id="khoSearch" class="qs" data-qs="#khoList" placeholder="Tìm PO, Model, Line, mã"></div>
+        <div id="khoBody"></div>
+      </div>
+    </section>
+
+    <!-- CẤP VẬT LIỆU -->
+    <!-- KITTING (tablet) -->
+    <section id="panel-kitpad" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Kitting</h1>
+          <div class="tools"><div class="seg" id="kpGrp"><button type="button" data-g="VLN" class="active">VLN</button><button type="button" data-g="HV">Rear + VLĐT</button><button type="button" data-g="BU">Nợ · soạn bù <i class="badge bad" id="kpBuN" hidden></i></button></div><button id="kpReload" class="secondary icon" type="button" aria-label="Tải lại">⟳</button></div>
+        </div>
+        <div class="ecn-alert" data-ecn hidden></div>
+        <div class="kp-tools"><input id="kpSearch" type="search" placeholder="Tìm PO, Model, Code"><span class="kp-range" id="kpRange"><label for="kpFrom" id="kpRangeLbl">Ngày kitting</label><input type="date" id="kpFrom" aria-label="Từ ngày"><span>–</span><input type="date" id="kpTo" aria-label="Đến ngày"><button type="button" class="secondary small" id="kpToday">Hôm nay</button><button type="button" class="secondary small" id="kpRangeClear" hidden>✕</button></span><label class="kp-chk"><input type="checkbox" id="kpHideDone" checked> Ẩn PO đã xong</label><button type="button" class="secondary" id="kpPrintSel" hidden>🖨 In phiếu đã chọn</button></div>
+        <div id="kpList"></div>
+      </div>
+    </section>
+    <!-- SẢN XUẤT -->
+    <section id="panel-prod" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Sản xuất</h1>
+          <div class="tools"><span id="prodShiftInfo" class="shift-info"></span><button id="prodReload" class="secondary icon" type="button" aria-label="Tải lại">⟳</button></div>
+        </div>
+        <div id="prodLines" class="prod-lines"></div>
+        <div id="prodBody"></div>
+        <div id="prodDebt" class="card debt-card" hidden>
+          <div class="card-head"><h2>Nợ vật liệu Kho → Line</h2>
+            <div class="debt-tools">
+              <select id="debtLine" data-ta aria-label="Line"></select>
+              <div class="seg" id="debtMode"><button type="button" data-m="24h" class="active">24 giờ</button><button type="button" data-m="range">Từ ngày</button></div>
+              <span id="debtRange" hidden><input type="date" id="debtFrom" aria-label="Từ ngày"> – <input type="date" id="debtTo" aria-label="Đến ngày"><button type="button" id="debtGo" class="secondary">Xem</button></span>
+              <button type="button" id="debtXlsx" class="secondary">⬇ Excel</button>
+            </div></div>
+          <div id="debtBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-supply" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Cấp vật liệu</h1><button id="newRequest" class="primary line-only" type="button">+ Yêu cầu</button></div>
+        <div id="supplyKpis" class="kpis"></div>
+        <div class="list-tools"><input type="search" class="qs" data-qs="#supplyList" placeholder="Tìm Line, mã, PO, người yêu cầu"></div>
+        <div id="supplyList" class="req-list"></div>
+      </div>
+    </section>
+
+    <!-- BÁO CÁO -->
+    <section id="panel-report" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Báo cáo</h1>
+          <div class="tools"><span id="repRange" class="range"><input id="repFrom" type="date" aria-label="Từ ngày"><span>–</span><input id="repTo" type="date" aria-label="Đến ngày"></span><button id="repExport" class="secondary" type="button">Tải Excel</button></div>
+        </div>
+        <div class="seg" id="repTabs" role="tablist"><button type="button" data-r="kitting" class="active">Tình hình kitting</button><button type="button" data-r="safety">An toàn vật liệu</button><button type="button" data-r="exceptions">Ngoại lệ</button></div>
+        <div id="repKpis" class="kpis"></div>
+        <div id="repBody"></div>
+      </div>
+    </section>
+
+    <!-- LINE & THAM SỐ -->
+    <section id="panel-lines" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Line &amp; tham số</h1>
+          <div class="tools"><input id="assignDay" type="date" aria-label="Ngày"><select id="assignShift" aria-label="Ca"></select></div>
+        </div>
+        <div id="lineKpis" class="kpis"></div>
+        <section class="card">
+          <div class="card-head"><h2 id="weekTitle">Kế hoạch Line tuần</h2>
+            <div class="btn-row"><button id="weekPrev" class="secondary icon" type="button" aria-label="Tuần trước">‹</button><button id="weekNext" class="secondary icon" type="button" aria-label="Tuần sau">›</button><button id="weekCopy" class="secondary" data-perm="lines:2" type="button">Chép tuần trước</button><button id="lineAdd" class="secondary" data-perm="lines:2" type="button">+ Line</button><button id="weekSave" class="primary" data-perm="lines:2" type="button">Lưu</button></div></div>
+          <div id="erpBar" class="erp-bar" hidden></div>
+          <div class="table-scroll week-scroll"><table id="weekTable" class="grid week"></table></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>Tồn chờ cấp VLN</h2><span class="legend"><i class="sw sw-wait"></i>Chờ cấp <i class="sw sw-plan"></i>Đã lập KH <i class="tick"></i>Min</span></div>
+          <div id="vlnTable" class="vln-bars big"></div>
+        </section>
+        <details class="card param-all">
+          <summary><b>Danh sách tham số Line × Model</b> <span class="muted">(rải chuyền, pending, UPH, ghi chú — kể cả Model không chạy tuần này)</span></summary>
+          <div class="card-head"><h2>Rải chuyền &amp; pending</h2><div class="btn-row"><button id="addParam" class="secondary" data-perm="lines:2" type="button">+ Thêm dòng</button><button id="saveParams" class="primary" data-perm="lines:2" type="button">Lưu tất cả</button></div></div>
+          <div id="paramMissing" class="hint"></div>
+          <input type="search" class="qs" data-qs="#paramTable" placeholder="Tìm Line, Model">
+          <div class="table-scroll"><table id="paramTable" class="grid"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- DỮ LIỆU PO -->
+    <section id="panel-po" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>Dữ liệu PO</h1>
+          <div class="btn-row">
+            <button type="button" id="poInternal" class="secondary" data-perm="internalPo">+ PO nội bộ</button>
+            <label class="file-btn primary" data-perm="po:2">Nhập file PO<input id="poFile" type="file" accept=".xlsx,.xls" hidden></label>
+          </div>
+        </div>
+        <div id="poAlerts"></div>
+        <div class="filters po-range">
+          <div class="seg" id="poQuick"><button type="button" data-q="today">Hôm nay</button><button type="button" data-q="week" class="active">Tuần này</button><button type="button" data-q="month">Tháng này</button><button type="button" data-q="all">Tất cả</button></div>
+          <span class="po-dates"><input type="date" id="poFrom" aria-label="Từ ngày"> – <input type="date" id="poTo" aria-label="Đến ngày"></span>
+        </div>
+        <div id="poKpis" class="kpis"></div>
+        <div class="filters">
+          <input id="poSearch" type="search" placeholder="Tìm PO, Model, Code, Master Line, trạng thái" autocomplete="off">
+          <select id="poState"><option value="">Tình trạng SX</option><option value="waiting">Chưa SX</option><option value="running">Đang SX</option><option value="done">Đã xong</option><option value="cancel">Đã hủy</option></select>
+          <select id="poPlanned"><option value="">Kế hoạch kitting</option><option value="yes">Đã lập KH</option><option value="no">Chưa lập KH</option></select>
+          <span id="poCount" class="hint"></span>
+        </div>
+        <p id="poImportInfo" class="hint small-note"></p>
+        <div class="table-scroll tall"><table id="poTable" class="grid"></table></div>
+      </div>
+    </section>
+
+    <!-- BOM -->
+    <section id="panel-bom" class="panel">
+      <div class="content">
+        <div class="page-head flat"><h1>BOM &amp; Model</h1>
+          <div class="btn-row">
+            <button type="button" id="bomTemplate" class="secondary" data-perm="bomImport">⬇ Tải file mẫu</button>
+            <button type="button" id="bomChange" class="secondary" hidden>⇄ Change code</button>
+            <button type="button" id="bomNewCode" class="secondary" data-perm="bom:2">+ Model Code</button>
+            <label class="file-btn primary" data-perm="bomImport">Cập nhật BOM từ file<input id="bomFile" type="file" accept=".xlsx" hidden></label>
+          </div>
+        </div>
+        <div class="ecn-alert" data-ecn hidden></div>
+        <div id="bomErpBar" class="erp-bar" hidden></div>
+        <div id="bomKpis" class="kpis"></div>
+        <div id="bomMissing"></div>
+        <div class="bom-layout">
+          <aside class="bom-side"><input type="search" class="qs" data-qs="#bomModels" placeholder="Tìm Model, Model Code"><div id="bomModels" class="bom-models"></div></aside>
+          <section id="bomDetail" class="card bom-detail"></section>
+        </div>
+        <section class="card" id="ecnCard">
+          <div class="card-head"><h2>Lịch sử change code (ECN)</h2><button type="button" id="ecnXlsx" class="secondary">⬇ Excel</button></div>
+          <div class="filters ecn-filters"><input id="ecnQ" type="search" placeholder="Tìm ECN, Model, Model Code, mã trước / sau" autocomplete="off">
+            <select id="ecnStatus"><option value="">Mọi trạng thái</option><option value="scheduled">Chờ áp dụng</option><option value="applied">Đã áp dụng</option><option value="cancelled">Đã hủy</option><option value="failed">Lỗi</option></select>
+            <span><input type="date" id="ecnFrom" aria-label="Từ ngày"> – <input type="date" id="ecnTo" aria-label="Đến ngày"></span></div>
+          <div class="table-scroll"><table id="ecnTable" class="grid"></table></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- HƯỚNG DẪN DEMO -->
+    <section id="panel-guide" class="panel">
+      <div class="content narrow-text">
+        <h1>Hướng dẫn sử dụng</h1>
+        <h2>Bắt đầu</h2>
+        <ol class="guide">
+          <li>Quản trị: Quản trị → thêm Line, chỉnh ngưỡng cấp (mặc định 200), Min/Max PO VLN chờ cấp; tạo tài khoản theo Mã NV + mật khẩu và vai trò.</li>
+          <li>Planner: BOM &amp; Model → Cập nhật BOM từ file; Dữ liệu PO → Nhập file Plan Master (Production Plan by Order); Line &amp; tham số → khai Line chạy Model nào theo tuần, rải chuyền, pending.</li>
+          <li>PO cũng có thể được đẩy tự động từ công cụ truyền dữ liệu (API có khóa).</li>
+        </ol>
+        <h2>Planner</h2>
+        <ol class="guide">
+          <li>Kế hoạch kitting: tích chọn PO rồi chọn thao tác ở thanh dưới — <b>Chuyển kitting</b> (hàng loạt, chọn ngày + vị trí), <b>Gộp</b> (lấy PO chọn đầu tiên làm chuẩn, chỉ hiện PO cùng Model — khác Model Code vẫn gộp được; tổng SL không quá giới hạn, mặc định 2.500 ea), <b>Bỏ KH</b>. Mỗi thao tác có <b>Hoàn tác</b> khi kho chưa kitting. Vẫn kéo thả và nút ⋮ được.</li>
+          <li>Số trên thẻ là <b>thứ tự ưu tiên trong từng Model</b> (F731·1, F731·2…). Kho làm xen kẽ theo lượt: ngày cũ còn sót trước, mỗi lượt lấy PO kế tiếp của mỗi Model (Model chạy N Line lấy N PO), Model đang thiếu tồn VLN lên trước, Model không chạy Line xếp cuối.</li>
+          <li>Thanh <b>Lọc cột ngày</b>: lọc các cột ngày theo Model, Model Code, trạng thái kitting, tìm PO / Kit / Line; đầu cột hiện số thẻ khớp / tổng.</li>
+          <li>Ô chọn nằm ở ô số thứ tự (không che số PO). Nút <b>☐ Tất cả</b> ở đầu mỗi cột chọn / bỏ chọn mọi thẻ đang hiển thị sau khi lọc. Kéo 1 thẻ đang chọn = kéo cả nhóm thẻ đã chọn sang cột khác.</li>
+          <li>Cột PO chưa lập tự xếp theo Plan Start (sớm nhất lên đầu); thẻ ghi giờ Start → End và thời lượng; cam = bắt đầu trong 24 giờ tới, đỏ = đã quá giờ. Chuyển kitting hàng loạt cũng xếp theo Plan Start.</li>
+          <li>Line &amp; tham số: lưới Line × 7 ngày (chọn Cả 2 ca hoặc từng ca), ⇥ để áp Model cho cả tuần, Chép tuần trước, + Line, chạm tên Line để đổi tên / xóa. Rải chuyền, pending; "Cấp khi Remain &lt;" = rải chuyền + pending + ngưỡng.</li>
+        </ol>
+        <h2>BOM &amp; Model — Planner</h2>
+        <ol class="guide">
+          <li>BOM gốc theo Model Code: chọn Model (danh sách sắp theo Model, có ô tìm) → chọn Model Code → + Dòng, ⋮ để sửa / xóa (một code hoặc mọi code của Model), đổi nhóm VLN / VLĐT / Rear ngay trên dòng.</li>
+          <li>BOM VLN theo Model: app tự tách từ các mã nhóm VLN, Point = Point phổ biến nhất; ô cam = lệch BOM gốc; chạm Point để chỉnh tay. Kitting VLN dùng BOM này cho mọi PO cùng Model.</li>
+          <li>Rear + VLĐT: bảng mã × Model Code, PO chỉ nhận đúng BOM của Model Code của nó.</li>
+          <li>+ Model Code: khai Model Code mới, chọn Model, chép BOM từ code khác.</li>
+          <li>Cập nhật BOM từ file: Tải file mẫu (sheet BOM + dòng mẫu), xóa dòng mẫu, chỉ điền các Model Code cần thêm / cập nhật, rồi nhập. App hiện xem trước; code không có trong file giữ nguyên; tên Model của code đã có không đổi qua file; tối đa 20 code đã có mỗi lần.</li>
+          <li>Sửa BOM không làm đổi các PO đã bắt đầu kitting.</li>
+        </ol>
+        <h2>Kho</h2>
+        <ol class="guide">
+          <li><b>Điều phối</b> (màn mở đầu): 4 ô cần xử lý ngay (Line sắp hết việc chưa có PO, Lượt 1 chưa xong, Sẵn sàng giao, Nợ); bảng theo Model (Line · giờ còn việc, sẵn sàng so với min–max, đang làm, chưa làm hôm nay · mai, chưa lập KH 48h, trạng thái Làm ngay / Thiếu tồn / Đủ) — bấm 1 dòng để xem PO; 15 việc tiếp theo có nút VLN / R+VLĐT; Xem tất cả gom theo ngày.</li>
+          <li>Kit gộp nhiều Model Code: VLN một phiếu chung; phiếu Rear + VLĐT chia khối theo từng code. Giao line được khi có code có Rear — code chưa có Rear ghi nợ, giao bù sau.</li>
+          <li>VLN / Rear + VLĐT: chạm một PO → tick từng mã (hoặc "Đủ tất cả"), nhập số nếu thiếu → Lưu tạm hoặc Xong. Rear + VLĐT chỉ hiện PO đã bắt đầu VLN.</li>
+          <li>Quy tắc cấp: Σ Remain PO đã giao − rải chuyền − pending &lt; ngưỡng (mặc định 200) thì Line được cấp tiếp PO / vật liệu. Ví dụ 600 − 400 − 50 = 150 &lt; 200 → được cấp. Từ ngưỡng trở lên là Line còn đủ việc: muốn giao sớm phải gửi duyệt.</li>
+          <li>Giao line: số to trên mỗi line là con số trên. Bấm Giao → chọn PO (ưu tiên cùng Model) → xem Rear / vật liệu và các mã ghi nợ → xác nhận. PO không có Rear thì không giao được.</li>
+          <li>Nợ: giao bù từng mã còn thiếu.</li>
+          <li>⋮ trên PO → Điều chỉnh kit: chuyển sang PO khác (VLN cùng Model, Rear/VLĐT cùng Model Code), trả kho, hoặc thu hồi từ line (thu hồi hết thì PO được gỡ khỏi line). Lý do chọn từ danh sách.</li>
+          <li>Lịch sử: báo cáo điều chỉnh theo lý do / kiểu và nhật ký mọi thao tác.</li>
+          <li>Mọi danh sách / bảng có ô tìm nhanh (gõ không dấu cũng được).</li>
+        </ol>
+        <h2>Sản xuất — Line, quản lý sản xuất</h2>
+        <ol class="guide">
+          <li>Dải Line trên cùng: mỗi Line một ô (Model, số giờ còn việc, số PO Kho sẵn sàng; xanh / vàng / đỏ). Leader được gán Line phụ trách thì mở là vào đúng Line của mình.</li>
+          <li>Thẻ tổng quan: số còn lại so với ngưỡng, còn khoảng bao nhiêu giờ việc (Remain ÷ UPH Planner khai ở Line &amp; tham số), lúc nào cần PO tiếp, Kho đang có bao nhiêu PO sẵn sàng.</li>
+          <li>Đang chạy trên Line: tiến độ từng PO và các mã Kho còn nợ. PO tiếp theo: Kho chuẩn bị tới đâu (% VLN, % Rear + VLĐT). PO sắp chạy — Planner chưa lập KH kitting: PO cùng Model gần giờ chạy, chưa gắn Line nào (PO chỉ gắn Line khi Kho giao).</li>
+          <li>Nút Xin PO tiếp theo / Xin vật liệu ngay tại tab, có kiểm tra ngưỡng.</li>
+        </ol>
+        <h2>Line · Duyệt</h2>
+        <ol class="guide">
+          <li>Cấp vật liệu → + Yêu cầu: chọn Line, xem ngay số còn lại so với ngưỡng; chọn <b>PO tiếp theo</b> hoặc <b>Vật liệu lẻ</b> (mã + số lượng).</li>
+          <li>Còn &lt; ngưỡng → tự đạt, chờ Kho (PO: Kho giao ở Giao line; vật liệu: Kho bấm Cấp). Còn ≥ ngưỡng → người duyệt Duyệt / Từ chối.</li>
+          <li>Kho giao PO cho Line chưa đến lúc cấp → hộp thoại hiện "cần duyệt" → nhập lý do → Gửi duyệt.</li>
+        </ol>
+        <h2>Báo cáo — mọi tài khoản</h2>
+        <ol class="guide">
+          <li>Tình hình kitting: chọn khoảng ngày → tỷ lệ đúng kế hoạch, thời gian lập KH → giao, tiến độ theo ngày (Chưa làm / Đang làm / Chờ giao / Đã giao), theo Model, chi tiết từng PO.</li>
+          <li>An toàn vật liệu: mỗi Line một thước đo số còn lại so với ngưỡng: xanh = đủ việc, vàng = cần cấp và đã có PO sẵn, đỏ = cần cấp nhưng chưa có PO sẵn, chấm PO chờ cấp so với min, số mã nợ.</li>
+          <li>Ngoại lệ: yêu cầu cấp không đạt quy tắc, duyệt / từ chối, điều chỉnh kit theo lý do.</li>
+          <li>Tải Excel: 1 file gồm tổng quan, theo ngày, theo Model, chi tiết PO, an toàn Line, ngoại lệ.</li>
+        </ol>
+        <p class="hint">Số đỏ / vàng trên tab = việc đang chờ bạn (Kho: PO cần kitting + chờ giao; Duyệt: yêu cầu chờ duyệt; Kho: yêu cầu chờ cấp). Dữ liệu tự làm mới mỗi 45 giây.</p>
+      </div>
+    </section>
+
+    <!-- QUẢN TRỊ -->
+    <section id="panel-admin" class="panel">
+      <div class="content">
+        <h1>Quản trị</h1>
+        <div class="two-col">
+          <section class="card" data-perm="@admin">
+            <h2>Thông số</h2>
+            <form id="settingsForm" class="stack">
+              <label>Ngưỡng cấp vật liệu (ea)<input name="supply_threshold" type="number" min="0" step="1"></label>
+              <label>Tối thiểu PO VLN chờ cấp / line<input name="vln_min_per_line" type="number" min="0" step="1"></label>
+              <label>Tối đa PO VLN chờ cấp / line<input name="vln_max_per_line" type="number" min="0" step="1"></label>
+              <label>Tổng SL tối đa 1 Kit PO gộp (ea)<input name="merge_max_qty" type="number" min="1" step="1"></label>
+              <label>Tự động xếp: tối đa Kit / ngày kitting (0 = không giới hạn)<input name="auto_max_kits_day" type="number" min="0" step="1"></label>
+              <label>Giờ bắt đầu ca (Ngày, Đêm)<input name="shift_starts" placeholder="08:00,20:00" pattern="\d\d:\d\d(,\s*\d\d:\d\d)*"></label>
+              <button class="primary">Lưu thông số</button>
+            </form>
+            <h2>Kết nối Next ERP</h2>
+            <form id="erpForm" class="stack">
+              <label>Địa chỉ ERP<input name="url" placeholder="https://next.il-sungtech.com" autocomplete="off"></label>
+              <label>API key (tài khoản bot)<input name="key" autocomplete="off" placeholder="để trống = giữ khóa đã lưu"></label>
+              <label>API secret<input name="secret" type="password" autocomplete="new-password" placeholder="để trống = giữ khóa đã lưu"></label>
+              <label class="check"><input type="checkbox" name="lineSync"> Kế hoạch Line lấy từ ERP (Line Production Plan, 15 phút / lần)</label>
+              <label class="check"><input type="checkbox" name="stockSync"> Tồn kho theo vị trí lấy từ ERP (Bin, 15 phút / lần) — tab Kho → Tồn ERP, vị trí trên phiếu kitting</label>
+              <label class="check"><input type="checkbox" name="bomSync"> BOM lấy từ ERP (BOM mặc định, 15 phút / lần) — khóa nhập BOM từ file / sửa dòng / ECN trong MM</label>
+              <label>Ghép tên Model ERP → MM <small class="muted">(mỗi dòng: Tên ERP = Tên MM; mặc định tự bỏ đuôi " AUTO")</small><textarea name="modelMap" rows="3" placeholder="P61* = P615"></textarea></label>
+              <p id="erpInfo" class="hint small-note"></p>
+              <div class="btn-row"><button class="primary">Lưu kết nối</button><button type="button" id="erpTest" class="secondary">⟳ Đồng bộ thử</button></div>
+            </form>
+            <h2>Line sản xuất</h2>
+            <form id="lineForm" class="inline-form"><input name="name" placeholder="Tên Line mới" required><button class="secondary">Thêm</button></form>
+            <div id="lineList" class="chip-list"></div>
+            <div id="demoBox" hidden><h2>Bản chạy thử</h2><p class="hint">Dữ liệu chỉ lưu trên trình duyệt này.</p><div class="btn-row"><button type="button" class="secondary" data-demo="reset">Nạp lại dữ liệu mẫu</button><button type="button" class="danger-outline" data-demo="clear">Xóa trắng để nạp file thật</button></div></div>
+          </section>
+          <section class="card" data-perm="@manager">
+            <div class="card-head"><h2>Tài khoản</h2><span id="userScope" class="hint"></span></div>
+            <form id="userForm" class="user-form">
+              <input name="username" placeholder="Mã NV" required minlength="2" maxlength="30" autocapitalize="characters">
+              <input name="name" placeholder="Họ tên">
+              <input name="dept" id="userDept" placeholder="Bộ phận" list="deptList" maxlength="40"><datalist id="deptList"></datalist>
+              <select name="role"><option value="planner">Planner</option><option value="kho">Kho</option><option value="opkho">OP kitting kho</option><option value="line">Line</option><option value="approver">Cấp duyệt</option><option value="admin">Quản trị</option></select>
+              <select name="line" id="userLine" data-ta aria-label="Line phụ trách"></select>
+              <input name="password" type="password" placeholder="Mật khẩu tạm (≥ 8, chữ + số)" required minlength="8" maxlength="64" autocomplete="new-password">
+              <label class="chk" data-perm="@admin"><input type="checkbox" name="isHead"> Trưởng bộ phận</label>
+              <button class="primary">Tạo</button>
+            </form>
+            <input type="search" class="qs" data-qs="#userTable" placeholder="Tìm tài khoản">
+            <div class="table-scroll"><table id="userTable" class="grid"></table></div>
+          </section>
+        </div>
+        <section class="card" id="prodCard" data-perm="prodUpdate"><div class="card-head"><h2>Cập nhật sản xuất</h2><div class="btn-row"><label class="file-btn primary">Nhập file<input id="prodFile" type="file" accept=".xlsx,.xls,.json" hidden></label><a class="file-btn secondary" href="qr/" target="_blank" rel="noopener">📱 Trình nhận QR</a><button type="button" id="prodTemplate" class="secondary">⬇ File mẫu</button></div></div>
+          <p class="hint small-note">PO · Production Q'ty (lũy kế) · Remain Q'ty · Status. Nhận được: Excel, file Excel / JSON xuất từ trình nhận QR, hoặc mở <b>📱 Trình nhận QR</b> trên điện thoại → chọn ảnh QR → <b>Cập nhật vào app MM</b>. API: <code>POST /api/mmx/production</code> + <code>X-MM-Key</code></p>
+          <div class="table-scroll"><table id="prodLog" class="grid small"></table></div></section>
+        <section class="card" data-perm="@admin"><div class="card-head"><h2>Nhật ký thao tác gần đây</h2><input type="search" class="qs" data-qs="#auditTable" placeholder="Tìm"></div><div class="table-scroll"><table id="auditTable" class="grid small"></table></div></section>
+      </div>
+    </section>
+  </div>
+
+  <div id="kpFull" class="kp-full" hidden></div>
+  <div id="printArea" aria-hidden="true"></div>
+  <div id="dialog" class="dialog-backdrop" hidden><form class="dialog" id="dialogForm"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><div class="btn-row end"><button type="button" class="secondary" id="dialogCancel">Hủy</button><button class="primary" id="dialogOk">Đồng ý</button></div></form></div>
+  <script src="vendor/Sortable.min.js"></script>
+  <script src="vendor/qrcode.min.js"></script>
+  <script src="app.js?v=pb33"></script>
+  <script src="kho.js?v=pb33"></script>
+  <script src="report.js?v=pb33"></script>
+  <script src="prod.js?v=pb33"></script>
+  <script src="kitpad.js?v=pb33"></script>
+</body>
+</html>

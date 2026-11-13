@@ -1,0 +1,27 @@
+option batch abort
+option confirm off
+open sftp://%2%@%1%/ -hostkey=acceptnew
+option batch continue
+mkdir %3%
+option batch abort
+lcd "%4%"
+cd %3%
+put -transfer=binary precheck_mm.sh ./
+call sed -i 's/\r$//' precheck_mm.sh
+call bash precheck_mm.sh %5% 2>&1
+option batch continue
+mkdir pb_migrations
+mkdir pb_hooks
+mkdir pb_public
+option batch abort
+put -transfer=binary docker-compose.yml Dockerfile env.default setup_mm.sh init_mm.sh .dockerignore ./
+synchronize remote -transfer=binary pb_migrations pb_migrations
+synchronize remote -transfer=binary pb_hooks pb_hooks
+synchronize remote -transfer=binary pb_public pb_public
+call sed -i 's/\r$//' setup_mm.sh init_mm.sh
+call MM_FROM_SETUP=1 bash setup_mm.sh 2>&1
+put -transfer=binary mm_init.env ./
+call chmod 600 mm_init.env
+call sed -i 's/\r$//' mm_init.env
+call bash init_mm.sh 2>&1
+exit
