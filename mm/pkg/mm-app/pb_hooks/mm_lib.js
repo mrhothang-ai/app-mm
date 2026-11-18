@@ -51,6 +51,7 @@ var pb_entry_exports = {};
 __export(pb_entry_exports, {
   ROLE_LABEL: () => ROLE_LABEL,
   cronErpLines: () => cronErpLines,
+  cronErpPush: () => cronErpPush,
   externalMesPlan: () => externalMesPlan,
   externalPo: () => externalPo,
   externalProduction: () => externalProduction,
@@ -637,8 +638,9 @@ function kitView(db, kit, ro, printed) {
     internal: pos.filter((p) => p.poType !== "SAP").map((p) => ({ po: p.po, type: p.poType })),
     notes: pos.filter((p) => p.note).map((p) => ({ po: p.po, note: p.note })),
     loadTp: pos.filter((p) => p.poType === "LOAD").map((p) => ({ po: p.po, modelCode: p.modelCode, qty: -p.planQty })),
-    locked: kit.vln_status !== "pending" || kit.hv_status !== "pending",
-    printed: !!(printed == null ? void 0 : printed.has(kit.code))
+    locked: kit.vln_status !== "pending" || kit.hv_status !== "pending" || !!kit.erp_req,
+    printed: !!(printed == null ? void 0 : printed.has(kit.code)),
+    erp: kit.erp_req || ""
   };
 }
 function kitQueueOrder(db) {
@@ -719,6 +721,7 @@ function loadKit(db, id) {
 var kitLocked = (kit) => kit.vln_status !== "pending" || kit.hv_status !== "pending";
 var kitPrinted = (db, kit) => !!db.prepare("SELECT 1 FROM kit_txn WHERE type = 'print' AND kit_code = ? LIMIT 1").get(kit.code);
 function assertKitFree(db, kit, act) {
+  if (kit.erp_req) throw fail(`${kit.code} l\xE0 Kit c\u1EE7a phi\u1EBFu ERP ${kit.erp_req}: kh\xF4ng ${act} \u0111\u01B0\u1EE3c (s\u1EEDa tr\xEAn ERP).`);
   if (kitLocked(kit)) throw fail(`${kit.code} Kho \u0111\xE3 b\u1EAFt \u0111\u1EA7u kitting, kh\xF4ng ${act} \u0111\u01B0\u1EE3c.`);
   if (kitPrinted(db, kit)) throw fail(`${kit.code} Kho \u0111\xE3 in phi\u1EBFu kitting, kh\xF4ng ${act} \u0111\u01B0\u1EE3c.`);
 }
@@ -749,6 +752,7 @@ function applyColumns(db, columns, username) {
         }
         const kit = loadKit(db, item.id);
         if (day === null) {
+          if (kit.erp_req) throw fail(`${kit.code} l\xE0 Kit c\u1EE7a phi\u1EBFu ERP ${kit.erp_req}: kh\xF4ng \u0111\u01B0a v\u1EC1 PO ch\u01B0a l\u1EADp \u0111\u01B0\u1EE3c.`);
           if (kitLocked(kit)) throw fail(`${kit.code} \u0111\xE3 b\u1EAFt \u0111\u1EA7u kitting, kh\xF4ng \u0111\u01B0a v\u1EC1 PO ch\u01B0a l\u1EADp \u0111\u01B0\u1EE3c.`);
           if (kit.kind === "single") {
             db.prepare("DELETE FROM kit_order WHERE id = ?").run(kit.id);
@@ -1402,6 +1406,9 @@ function erpCfg(db) {
     bomSync: cfgGet(db, "bom_sync") !== "0",
     stockOkAt: cfgGet(db, "stock_ok_at"),
     bomOkAt: cfgGet(db, "bom_ok_at"),
+    // Phiếu yêu cầu vật tư ERP → Kho kitting trên MM (erp-request.mjs): mặc định TẮT, Quản trị bật khi ERP đã sẵn sàng.
+    reqSync: cfgGet(db, "req_sync") === "1",
+    reqOkAt: cfgGet(db, "req_ok_at"),
     modelMap: (() => {
       try {
         return JSON.parse(cfgGet(db, "model_map") || "{}");
@@ -1429,12 +1436,13 @@ function saveErpCfg(db, body, username) {
     if ((body == null ? void 0 : body.lineSync) !== void 0) cfgSet(db, "line_sync", body.lineSync ? "1" : "0");
     if ((body == null ? void 0 : body.stockSync) !== void 0) cfgSet(db, "stock_sync", body.stockSync ? "1" : "0");
     if ((body == null ? void 0 : body.bomSync) !== void 0) cfgSet(db, "bom_sync", body.bomSync ? "1" : "0");
+    if ((body == null ? void 0 : body.reqSync) !== void 0) cfgSet(db, "req_sync", body.reqSync ? "1" : "0");
     if ((body == null ? void 0 : body.modelMap) !== void 0) {
       const m = {};
       for (const [k, v] of Object.entries(body.modelMap || {})) if (String(k).trim() && String(v).trim()) m[String(k).trim()] = String(v).trim();
       cfgSet(db, "model_map", JSON.stringify(m));
     }
-    audit(db, username, "erp.cfg", { url: (body == null ? void 0 : body.url) !== void 0, key: !!(body == null ? void 0 : body.key), secret: !!(body == null ? void 0 : body.secret), lineSync: body == null ? void 0 : body.lineSync, stockSync: body == null ? void 0 : body.stockSync, bomSync: body == null ? void 0 : body.bomSync, modelMap: (body == null ? void 0 : body.modelMap) ? Object.keys(body.modelMap).length : void 0 });
+    audit(db, username, "erp.cfg", { url: (body == null ? void 0 : body.url) !== void 0, key: !!(body == null ? void 0 : body.key), secret: !!(body == null ? void 0 : body.secret), lineSync: body == null ? void 0 : body.lineSync, stockSync: body == null ? void 0 : body.stockSync, bomSync: body == null ? void 0 : body.bomSync, reqSync: body == null ? void 0 : body.reqSync, modelMap: (body == null ? void 0 : body.modelMap) ? Object.keys(body.modelMap).length : void 0 });
     return { ok: true, message: "\u0110\xE3 l\u01B0u k\u1EBFt n\u1ED1i Next ERP." };
   });
 }
@@ -1446,6 +1454,7 @@ function erpLineStatus(db) {
     lineSync: c.lineSync,
     stockSync: c.stockSync,
     bomSync: c.bomSync,
+    reqSync: c.reqSync,
     locked: erpLineLocked(db),
     okAt: c.okAt,
     stockOkAt: c.stockOkAt,
@@ -2117,11 +2126,419 @@ function rejectedLots(db) {
   return db.prepare("SELECT l.* FROM kit_lot l JOIN kit_order k ON k.id = l.kit_id WHERE l.status = 'rejected' AND k.vln_status = 'delivered' ORDER BY l.signed_at").all().map((l) => lotView(db, l));
 }
 
+// ../kitting-app/lib/erp-request.mjs
+var ERP_REQ_METHOD = "ilsungtech_erp.api.mm_sync";
+var EPS = 1e-6;
+var r34 = (n) => Math.round(Number(n) * 1e3) / 1e3;
+var PO_TYPE = { SS: "SAP", UPL: "UNPLAN", RMA: "RMA", ADD: "ADD" };
+var OPEN_STATES = ["open", "hold"];
+var STATE_LABEL = { open: "\u0110ang kitting", hold: "ERP t\u1EA1m gi\u1EEF", done: "ERP \u0111\xE3 \u0111\u1EE7", cancelled: "ERP \u0111\xE3 h\u1EE7y", deleted: "ERP \u0111\xE3 x\xF3a", stopped: "ERP \u0111\xE3 d\u1EEBng", released: "Tr\u1EA3 v\u1EC1 ERP", reverted: "ERP l\xF9i b\u01B0\u1EDBc" };
+function ensureErpReqSchema(db) {
+  ensureErpSchema(db);
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS erp_req (
+    name TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT, line TEXT, model TEXT, plan_date TEXT, stage TEXT, blocked TEXT,
+    data TEXT, state TEXT NOT NULL DEFAULT 'open', kit_id INTEGER, conflict TEXT, warn TEXT,
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT NOT NULL DEFAULT (datetime('now')));
+  CREATE TABLE IF NOT EXISTS erp_sent (erp_req TEXT NOT NULL, material TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, PRIMARY KEY (erp_req, material));
+  CREATE TABLE IF NOT EXISTS erp_report (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, report_id TEXT NOT NULL UNIQUE, erp_req TEXT NOT NULL, rows TEXT NOT NULL, staff TEXT,
+    status TEXT NOT NULL DEFAULT 'pending', tries INTEGER NOT NULL DEFAULT 0, error TEXT, result TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), sent_at TEXT);
+  CREATE INDEX IF NOT EXISTS erp_report_status ON erp_report(status, id);`);
+  for (const [t4, c] of [["kit_order", "erp_req"], ["po", "erp_req"], ["material_request", "erp_req"], ["material_request", "erp_key"]]) {
+    try {
+      if (!db.prepare(`PRAGMA table_info(${t4})`).all().some((x) => x.name === c)) db.exec(`ALTER TABLE ${t4} ADD COLUMN ${c} TEXT`);
+    } catch (e) {
+    }
+  }
+}
+var reqRow = (db, name) => name ? db.prepare("SELECT * FROM erp_req WHERE name = ?").get(name) : null;
+function assertErpOpen(db, name) {
+  if (!name) return;
+  const r = reqRow(db, name);
+  if (!r) return;
+  if (!OPEN_STATES.includes(r.state)) throw fail(`Phi\u1EBFu ERP ${name}: ${STATE_LABEL[r.state] || r.state}, kh\xF4ng so\u1EA1n ti\u1EBFp \u0111\u01B0\u1EE3c.`);
+  if (r.blocked) throw fail(`Phi\u1EBFu ERP ${name} \u0111ang b\u1ECB ch\u1EB7n tr\xEAn ERP: ${String(r.blocked).replace(/<[^>]+>/g, "")}`);
+}
+function assertNotErpKit(kit, act) {
+  if (kit == null ? void 0 : kit.erp_req) throw fail(`${kit.code} l\xE0 Kit c\u1EE7a phi\u1EBFu ERP ${kit.erp_req}: kh\xF4ng ${act} \u0111\u01B0\u1EE3c (s\u1EEDa tr\xEAn ERP).`);
+}
+var lineOf = (db, text) => {
+  var _a;
+  const parts = String(text || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length !== 1) return "";
+  const key2 = parts[0].replace(/\s+/g, "").toLowerCase();
+  return ((_a = db.prepare("SELECT name FROM lines WHERE active = 1 AND lower(replace(name, ' ', '')) = ?").get(key2)) == null ? void 0 : _a.name) || "";
+};
+var kitItems = (db, kitId) => db.prepare("SELECT * FROM kit_item WHERE kit_id = ?").all(kitId);
+var kitPosOf = (db, kitId) => db.prepare("SELECT p.* FROM kit_order_po x JOIN po p ON p.po_key = x.po_key WHERE x.kit_id = ?").all(kitId);
+var untouched = (db, kit) => kit.vln_status !== "delivered" && !kitItems(db, kit.id).some((i) => i.kitted > EPS);
+function upsertReq(db, r) {
+  const data = JSON.stringify({ codes: r.codes || [], lines: r.lines || [], reason: r.reason || "", requested_by: r.requested_by || "", line_leader: r.line_leader || "", shift: r.shift || "", schedule_date: r.schedule_date || "" });
+  db.prepare(`INSERT INTO erp_req(name, kind, source, line, model, plan_date, stage, blocked, data, state, synced_at) VALUES (?,?,?,?,?,?,?,?,?, 'open', datetime('now'))
+    ON CONFLICT(name) DO UPDATE SET kind = excluded.kind, source = excluded.source, line = excluded.line, model = excluded.model, plan_date = excluded.plan_date,
+      stage = excluded.stage, blocked = excluded.blocked, data = excluded.data, state = 'open', synced_at = excluded.synced_at`).run(r.name, r.kind, r.source || "", r.line || "", r.model || "", r.plan_date || r.schedule_date || "", r.stage || "", r.blocked || "", data);
+}
+function applyMaterial(db, r) {
+  const line = lineOf(db, r.line) || r.line || "\u2014";
+  const note = `ERP ${r.name}${r.reason ? ` \xB7 ${r.reason}` : ""}`.slice(0, 200);
+  const keys = /* @__PURE__ */ new Set();
+  let added = 0;
+  for (const l of r.lines || []) {
+    keys.add(l.key);
+    const issued = db.prepare("SELECT COALESCE(SUM(issued_qty), 0) s FROM material_request WHERE erp_req = ? AND erp_key = ? AND status = 'issued'").get(r.name, l.key).s;
+    const need = r34(Number(l.qty) - issued);
+    const open = db.prepare("SELECT * FROM material_request WHERE erp_req = ? AND erp_key = ? AND status = 'approved'").get(r.name, l.key);
+    if (need > EPS) {
+      if (open) {
+        if (r34(open.qty) !== need || open.line !== line) db.prepare("UPDATE material_request SET qty = ?, line = ?, model = ? WHERE id = ?").run(need, line, r.model || "", open.id);
+      } else {
+        db.prepare(`INSERT INTO material_request(kind, line, model, material, description, qty, note, status, pass, requested_by, approved_by, approved_at, erp_req, erp_key)
+          VALUES ('material', ?, ?, ?, ?, ?, ?, 'approved', 1, 'ERP', 'ERP', datetime('now'), ?, ?)`).run(line, r.model || "", l.item_code, l.item_name || "", need, note, r.name, l.key);
+        added++;
+      }
+    } else if (open) db.prepare("UPDATE material_request SET status = 'cancelled', approve_note = 'ERP: \u0111\xE3 \u0111\u1EE7' WHERE id = ?").run(open.id);
+  }
+  for (const o of db.prepare("SELECT id, erp_key FROM material_request WHERE erp_req = ? AND status = 'approved'").all(r.name)) {
+    if (!keys.has(o.erp_key)) db.prepare("UPDATE material_request SET status = 'cancelled', approve_note = 'ERP: d\xF2ng \u0111\xE3 b\u1ECF' WHERE id = ?").run(o.id);
+  }
+  return added;
+}
+function groupOf(db, material, codes) {
+  if (codes.length) {
+    const b = db.prepare(`SELECT model_code, kit_group FROM bom WHERE material = ? AND model_code IN (${codes.map(() => "?").join(",")})
+      ORDER BY CASE kit_group WHEN 'REAR' THEN 0 WHEN 'VLDT' THEN 1 ELSE 2 END LIMIT 1`).get(material, ...codes);
+    if (b && (b.kit_group === "REAR" || b.kit_group === "VLDT")) return { grp: "HV", kitGroup: b.kit_group, code: b.model_code };
+  }
+  return { grp: "VLN", kitGroup: "VLN", code: "" };
+}
+function syncKitItems(db, kit, r) {
+  const codes = [...new Set(kitPosOf(db, kit.id).map((p) => p.model_code))];
+  const want = /* @__PURE__ */ new Map();
+  for (const l of r.lines || []) {
+    const g = groupOf(db, l.item_code, codes), k = `${g.grp}${g.code}${l.item_code}`;
+    const w = want.get(k) || __spreadProps(__spreadValues({}, g), { material: l.item_code, description: l.item_name || "", required: 0 });
+    w.required = r34(w.required + Number(l.qty || 0));
+    want.set(k, w);
+  }
+  const delivered = kit.vln_status === "delivered";
+  const have = new Map(kitItems(db, kit.id).map((i) => [`${i.grp}${i.model_code}${i.material}`, i]));
+  const warn = [];
+  if (!delivered) {
+    for (const [k, w] of want) {
+      const i = have.get(k);
+      if (!i) db.prepare("INSERT INTO kit_item(kit_id, grp, kit_group, model_code, material, description, required) VALUES (?,?,?,?,?,?,?)").run(kit.id, w.grp, w.kitGroup, w.code, w.material, w.description, w.required);
+      else if (r34(i.required) !== w.required) db.prepare("UPDATE kit_item SET required = ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").run(w.required, kit.id, i.grp, i.model_code, i.material);
+    }
+    for (const [k, i] of have) {
+      if (want.has(k)) continue;
+      if (i.kitted > EPS) warn.push(`${i.material}: ERP b\u1ECF kh\u1ECFi phi\u1EBFu nh\u01B0ng \u0111\xE3 so\u1EA1n ${r34(i.kitted)}`);
+      else db.prepare("DELETE FROM kit_item WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").run(kit.id, i.grp, i.model_code, i.material);
+    }
+    for (const grp of ["VLN", "HV"]) {
+      const col = grp === "VLN" ? "vln_status" : "hv_status";
+      const n = db.prepare("SELECT COUNT(*) n FROM kit_item WHERE kit_id = ? AND grp = ?").get(kit.id, grp).n;
+      if (!n && kit[col] === "pending") db.prepare(`UPDATE kit_order SET ${col} = 'done', updated_at = datetime('now') WHERE id = ?`).run(kit.id);
+    }
+  }
+  return warn;
+}
+function applyPlan(db, r) {
+  var _a;
+  const req = reqRow(db, r.name);
+  let kit = (req == null ? void 0 : req.kit_id) ? db.prepare("SELECT * FROM kit_order WHERE id = ?").get(req.kit_id) : null;
+  const line = lineOf(db, r.line);
+  const codes = r.codes || [];
+  const warn = [];
+  if (kit) {
+    const now = new Set(kitPosOf(db, kit.id).map((p) => p.po_key)), want = new Set(codes.map((c) => normalizePo(c.code)));
+    const same = now.size === want.size && [...want].every((k) => now.has(k));
+    if (!same) {
+      if (untouched(db, kit)) {
+        dropKit(db, kit, r.name);
+        kit = null;
+      } else warn.push("ERP \u0111\u1ED5i danh s\xE1ch PO sau khi Kho \u0111\xE3 so\u1EA1n: ki\u1EC3m tra l\u1EA1i Kit.");
+    }
+  }
+  if (!kit) {
+    const conflict = [];
+    for (const c of codes) {
+      const key2 = normalizePo(c.code);
+      const other = db.prepare("SELECT k.code, k.erp_req FROM kit_order_po x JOIN kit_order k ON k.id = x.kit_id WHERE x.po_key = ?").get(key2);
+      if (other && other.erp_req !== r.name) conflict.push(`${c.code} \u0111ang \u1EDF Kit ${other.code}`);
+    }
+    if (conflict.length) {
+      db.prepare("UPDATE erp_req SET conflict = ?, kit_id = NULL WHERE name = ?").run(conflict.join("; "), r.name);
+      return { created: 0, conflict };
+    }
+    for (const c of codes) {
+      const key2 = normalizePo(c.code), type = PO_TYPE[c.type] || "SAP";
+      const p = db.prepare("SELECT * FROM po WHERE po_key = ?").get(key2);
+      if (p) {
+        db.prepare("UPDATE po SET erp_req = ? WHERE po_key = ?").run(r.name, key2);
+        continue;
+      }
+      const fixed = type === "SAP" ? null : lineOf(db, c.line) || line || null;
+      db.prepare(`INSERT INTO po(po_key, po_no, plan_date, basic_model, model_code, plan_qty, remain_qty, po_type, fixed_line, ref_doc, note, created_by, in_source, erp_req)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?, 'ERP', 1, ?)`).run(
+        key2,
+        c.code,
+        r.plan_date || r.schedule_date || null,
+        r.model || null,
+        c.item_code,
+        Number(c.qty) || 0,
+        Number(c.qty) || 0,
+        type,
+        fixed,
+        (c.unplan_request || r.name).slice(0, 60),
+        `ERP ${r.name}`,
+        r.name
+      );
+    }
+    const first = codes[0];
+    if (!first) return { created: 0, conflict: [] };
+    let code = r.name;
+    if (db.prepare("SELECT 1 FROM kit_order WHERE code = ?").get(code)) code = `${r.name}-${Date.now() % 1e5}`;
+    const day = r.plan_date || r.schedule_date || todayKey();
+    const seq = ((_a = db.prepare("SELECT MAX(seq) m FROM kit_order WHERE plan_day = ?").get(day).m) != null ? _a : -1) + 1;
+    const res = db.prepare("INSERT INTO kit_order(code, kind, model_code, plan_day, seq, plan_line, created_by, erp_req) VALUES (?,?,?,?,?,?, 'ERP', ?)").run(code, codes.length > 1 ? "merged" : "single", first.item_code, day, seq, line || null, r.name);
+    for (const c of codes) db.prepare("INSERT INTO kit_order_po(kit_id, po_key) VALUES (?, ?)").run(res.lastInsertRowid, normalizePo(c.code));
+    kit = db.prepare("SELECT * FROM kit_order WHERE id = ?").get(Number(res.lastInsertRowid));
+    db.prepare("UPDATE erp_req SET kit_id = ?, conflict = NULL WHERE name = ?").run(kit.id, r.name);
+    syncKitItems(db, kit, r);
+    return { created: 1, conflict: [] };
+  }
+  if (line && kit.plan_line !== line) db.prepare("UPDATE kit_order SET plan_line = ? WHERE id = ?").run(line, kit.id);
+  warn.push(...syncKitItems(db, kit, r));
+  db.prepare("UPDATE erp_req SET conflict = NULL, warn = ? WHERE name = ?").run(warn.length ? warn.join("; ") : null, r.name);
+  return { created: 0, conflict: [] };
+}
+function dropKit(db, kit, name) {
+  for (const p of kitPosOf(db, kit.id)) {
+    if (p.po_type !== "SAP" && p.created_by === "ERP") db.prepare("UPDATE po SET plan_status = 'Cancel', erp_req = NULL WHERE po_key = ?").run(p.po_key);
+    else db.prepare("UPDATE po SET erp_req = NULL WHERE po_key = ?").run(p.po_key);
+  }
+  db.prepare("DELETE FROM kit_item WHERE kit_id = ?").run(kit.id);
+  db.prepare("DELETE FROM kit_order_po WHERE kit_id = ?").run(kit.id);
+  db.prepare("DELETE FROM kit_order WHERE id = ?").run(kit.id);
+  db.prepare("UPDATE erp_req SET kit_id = NULL WHERE name = ?").run(name);
+}
+function closeReq(db, name, state) {
+  const req = reqRow(db, name);
+  if (!req) return null;
+  db.prepare("UPDATE erp_req SET state = ?, synced_at = datetime('now') WHERE name = ?").run(state, name);
+  if (state === "done" || state === "hold") return state;
+  db.prepare("UPDATE material_request SET status = 'cancelled', approve_note = ? WHERE erp_req = ? AND status = 'approved'").run(`ERP: ${STATE_LABEL[state] || state}`, name);
+  const kit = req.kit_id ? db.prepare("SELECT * FROM kit_order WHERE id = ?").get(req.kit_id) : null;
+  if (kit) {
+    if (untouched(db, kit)) dropKit(db, kit, name);
+    else db.prepare("UPDATE erp_req SET warn = ? WHERE name = ?").run(`ERP: ${STATE_LABEL[state] || state} \u2014 Kit ${kit.code} \u0111\xE3 so\u1EA1n: Kho thu h\u1ED3i / tr\u1EA3 kho tr\xEAn MM v\xE0 x\u1EED l\xFD tr\xEAn ERP.`, name);
+  }
+  return state;
+}
+function applyErpRequests(db, data, { username = "ERP", source = "ERP" } = {}) {
+  ensureErpReqSchema(db);
+  return tx(db, () => {
+    const s = { ok: true, source, requests: 0, material: 0, plan: 0, newRows: 0, newKits: 0, conflicts: [], closed: [] };
+    for (const r of (data == null ? void 0 : data.requests) || []) {
+      if (!(r == null ? void 0 : r.name) || !["material", "plan"].includes(r.kind)) continue;
+      upsertReq(db, r);
+      s.requests++;
+      if (r.kind === "material") {
+        s.material++;
+        s.newRows += applyMaterial(db, r);
+      } else {
+        s.plan++;
+        const p = applyPlan(db, r);
+        s.newKits += p.created;
+        if (p.conflict.length) s.conflicts.push({ name: r.name, items: p.conflict });
+      }
+    }
+    for (const c of (data == null ? void 0 : data.closed) || []) {
+      const st = closeReq(db, c.name, c.state);
+      if (st) s.closed.push({ name: c.name, state: st });
+    }
+    s.changed = !!(s.newRows || s.newKits || s.closed.length);
+    db.prepare("INSERT INTO import_log(kind, source, summary, created_by) VALUES (?,?,?,?)").run("ERP_REQ", source, JSON.stringify(s), username);
+    db.prepare("DELETE FROM import_log WHERE kind = 'ERP_REQ' AND created_at < datetime('now', '-30 days')").run();
+    cfgSet(db, "req_ok_at", (/* @__PURE__ */ new Date()).toISOString());
+    return s;
+  });
+}
+var knownRequests = (db) => {
+  ensureErpReqSchema(db);
+  return db.prepare(`SELECT name FROM erp_req WHERE state IN ('open','hold')`).all().map((r) => r.name);
+};
+function pickedOf(db, req) {
+  const rows = req.kind === "plan" ? req.kit_id ? db.prepare("SELECT material, SUM(kitted) q FROM kit_item WHERE kit_id = ? GROUP BY material").all(req.kit_id) : [] : db.prepare("SELECT material, SUM(issued_qty) q FROM material_request WHERE erp_req = ? AND status = 'issued' GROUP BY material").all(req.name);
+  return new Map(rows.map((r) => [r.material, r34(r.q || 0)]));
+}
+function staffOf(db, req) {
+  var _a, _b;
+  if (req.kind === "plan" && req.kit_id) {
+    const k = db.prepare("SELECT code FROM kit_order WHERE id = ?").get(req.kit_id);
+    return k ? ((_a = db.prepare("SELECT username FROM kit_txn WHERE kit_code = ? AND username <> '' ORDER BY id DESC LIMIT 1").get(k.code)) == null ? void 0 : _a.username) || "" : "";
+  }
+  return ((_b = db.prepare("SELECT issued_by FROM material_request WHERE erp_req = ? AND status = 'issued' ORDER BY issued_at DESC LIMIT 1").get(req.name)) == null ? void 0 : _b.issued_by) || "";
+}
+var newReportId = (name) => `MM-${name}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+function queueReports(db) {
+  ensureErpReqSchema(db);
+  return tx(db, () => {
+    let queued = 0;
+    for (const req of db.prepare("SELECT * FROM erp_req WHERE state IN ('open','hold')").all()) {
+      const picked = pickedOf(db, req), sent = new Map(db.prepare("SELECT material, qty FROM erp_sent WHERE erp_req = ?").all(req.name).map((r) => [r.material, r.qty]));
+      const rows = [], minus = [];
+      for (const m of /* @__PURE__ */ new Set([...picked.keys(), ...sent.keys()])) {
+        const d = r34((picked.get(m) || 0) - (sent.get(m) || 0));
+        if (d > EPS) rows.push({ item_code: m, qty: d });
+        else if (d < -EPS) minus.push(`${m} \u2212${r34(-d)}`);
+      }
+      const warnMinus = minus.length ? `MM \u0111\xE3 gi\u1EA3m sau khi b\xE1o ERP (thu h\u1ED3i / tr\u1EA3 kho): ${minus.join(", ")} \u2014 Kho x\u1EED l\xFD tr\xEAn ERP.` : null;
+      if ((req.warn || null) !== warnMinus && (!req.warn || req.warn.startsWith("MM \u0111\xE3 gi\u1EA3m"))) db.prepare("UPDATE erp_req SET warn = ? WHERE name = ?").run(warnMinus, req.name);
+      if (!rows.length) continue;
+      db.prepare("INSERT INTO erp_report(report_id, erp_req, rows, staff) VALUES (?,?,?,?)").run(newReportId(req.name), req.name, JSON.stringify(rows), staffOf(db, req));
+      const up = db.prepare("INSERT INTO erp_sent(erp_req, material, qty) VALUES (?,?,?) ON CONFLICT(erp_req, material) DO UPDATE SET qty = qty + excluded.qty");
+      for (const r of rows) up.run(req.name, r.item_code, r.qty);
+      queued++;
+    }
+    return { queued };
+  });
+}
+var pendingReports = (db, limit = 20) => {
+  ensureErpReqSchema(db);
+  return db.prepare("SELECT * FROM erp_report WHERE status = 'pending' ORDER BY id LIMIT ?").all(limit);
+};
+var reportBody = (rep) => ({ request: rep.erp_req, report_id: rep.report_id, rows: JSON.parse(rep.rows || "[]"), staff: rep.staff || "", note: "App MM" });
+function markReport(db, id, { status, json, message }) {
+  return tx(db, () => {
+    var _a;
+    const ok = status >= 200 && status < 300 && ((_a = json == null ? void 0 : json.message) == null ? void 0 : _a.ok);
+    if (ok) db.prepare("UPDATE erp_report SET status = 'ok', tries = tries + 1, error = NULL, result = ?, sent_at = datetime('now') WHERE id = ?").run(JSON.stringify(json.message.stock_entries || []), id);
+    else if (!status || status >= 500) db.prepare("UPDATE erp_report SET tries = tries + 1, error = ? WHERE id = ?").run(message || `ERP kh\xF4ng ph\u1EA3n h\u1ED3i (${status || "m\u1EA1ng"})`, id);
+    else db.prepare("UPDATE erp_report SET status = 'error', tries = tries + 1, error = ?, sent_at = datetime('now') WHERE id = ?").run(message || `ERP t\u1EEB ch\u1ED1i (${status})`, id);
+    return ok;
+  });
+}
+function erpMessage(json, status) {
+  try {
+    const list = JSON.parse((json == null ? void 0 : json._server_messages) || "[]").map((m) => {
+      try {
+        return JSON.parse(m).message;
+      } catch (e) {
+        return m;
+      }
+    });
+    const text = list.join(" \xB7 ") || (json == null ? void 0 : json.exception) || (json == null ? void 0 : json.message) || "";
+    return String(text).replace(/<br\s*\/?>/gi, " \xB7 ").replace(/<[^>]+>/g, "").trim().slice(0, 500) || `ERP tr\u1EA3 l\u1ED7i ${status}`;
+  } catch (e) {
+    return `ERP tr\u1EA3 l\u1ED7i ${status}`;
+  }
+}
+function readyCfg(db, makePost, auto) {
+  const c = erpCfg(db);
+  if (auto && !c.reqSync) return { skip: { ok: true, skipped: "Ch\u01B0a b\u1EADt \u0111\u1ED3ng b\u1ED9 phi\u1EBFu ERP" } };
+  if (!(c.url && c.key && c.secret)) throw fail("Ch\u01B0a c\u1EA5u h\xECnh k\u1EBFt n\u1ED1i Next ERP (Qu\u1EA3n tr\u1ECB \u2192 K\u1EBFt n\u1ED1i Next ERP).");
+  if (!makePost) throw fail("B\u1EA3n ch\u1EA1y n\xE0y kh\xF4ng g\u1ECDi \u0111\u01B0\u1EE3c Next ERP.");
+  return { c };
+}
+function pullErpRequests(db, makePost, { auto = false, cfg = null, known = null } = {}) {
+  var _a;
+  let c = cfg;
+  if (!c) {
+    ensureErpReqSchema(db);
+    const x = readyCfg(db, makePost, auto);
+    if (x.skip) return { skip: x.skip };
+    c = x.c;
+  }
+  const r = makePost(c)(`/api/method/${ERP_REQ_METHOD}.pending_requests`, { known: known || knownRequests(db), claim: 1 });
+  if (r.status === 401) return { error: "Next ERP t\u1EEB ch\u1ED1i kh\xF3a API (401) \u2014 ki\u1EC3m tra API key / secret c\u1EE7a t\xE0i kho\u1EA3n bot." };
+  if (r.status === 403) return { error: 'T\xE0i kho\u1EA3n bot ch\u01B0a c\xF3 role "MM Sync" tr\xEAn Next ERP (403) \u2014 nh\u1EDD IT g\xE1n role.' };
+  if (r.status < 200 || r.status >= 300) return { error: r.status ? erpMessage(r.json, r.status) : "Kh\xF4ng k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c Next ERP (m\u1EA1ng)." };
+  return { data: ((_a = r.json) == null ? void 0 : _a.message) || {} };
+}
+function syncErpRequests(db, makePost, { username = "ERP", source = "ERP", auto = false } = {}) {
+  const got = pullErpRequests(db, makePost, { auto });
+  if (got.skip) return got.skip;
+  if (got.error) {
+    db.prepare("INSERT INTO import_log(kind, source, summary, created_by) VALUES (?,?,?,?)").run("ERP_REQ", source, JSON.stringify({ ok: false, error: got.error }), username);
+    return { ok: false, error: got.error };
+  }
+  const s = applyErpRequests(db, got.data, { username, source });
+  const q = queueReports(db);
+  if (!auto) audit(db, username, "erp.req.sync", { requests: s.requests, newKits: s.newKits, newRows: s.newRows, closed: s.closed.length, queued: q.queued });
+  return __spreadProps(__spreadValues({}, s), { queued: q.queued });
+}
+function erpReqStatus(db) {
+  ensureErpReqSchema(db);
+  const c = erpCfg(db), last = db.prepare("SELECT summary, created_by, created_at FROM import_log WHERE kind = 'ERP_REQ' ORDER BY id DESC LIMIT 1").get();
+  const reqs = db.prepare(`SELECT r.*, k.code kit_code, k.vln_status, k.hv_status, k.line kit_line FROM erp_req r LEFT JOIN kit_order k ON k.id = r.kit_id
+    WHERE r.state IN ('open','hold') OR r.warn IS NOT NULL OR r.conflict IS NOT NULL ORDER BY r.first_seen DESC LIMIT 300`).all().map((r) => ({
+    name: r.name,
+    kind: r.kind,
+    source: r.source,
+    line: r.line,
+    model: r.model,
+    planDate: r.plan_date,
+    state: r.state,
+    stateLabel: STATE_LABEL[r.state] || r.state,
+    blocked: r.blocked ? String(r.blocked).replace(/<[^>]+>/g, "") : "",
+    conflict: r.conflict || "",
+    warn: r.warn || "",
+    kit: r.kit_code || "",
+    kitStatus: r.kit_code ? { vln: r.vln_status, hv: r.hv_status, line: r.kit_line || "" } : null,
+    syncedAt: r.synced_at
+  }));
+  const reports = db.prepare("SELECT * FROM erp_report WHERE status IN ('pending','error') OR sent_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 200").all().map((r) => ({ id: r.id, request: r.erp_req, rows: JSON.parse(r.rows || "[]"), staff: r.staff || "", status: r.status, tries: r.tries, error: r.error || "", stockEntries: JSON.parse(r.result || "[]"), createdAt: r.created_at, sentAt: r.sent_at || "" }));
+  const n = (s) => db.prepare("SELECT COUNT(*) n FROM erp_report WHERE status = ?").get(s).n;
+  return {
+    configured: !!(c.url && c.key && c.secret),
+    reqSync: c.reqSync,
+    okAt: c.reqOkAt,
+    last: last ? __spreadProps(__spreadValues({}, JSON.parse(last.summary || "{}")), { by: last.created_by, at: last.created_at }) : null,
+    kpi: { open: reqs.filter((r) => OPEN_STATES.includes(r.state)).length, pending: n("pending"), error: n("error"), warn: reqs.filter((r) => r.warn || r.conflict).length },
+    requests: reqs,
+    reports
+  };
+}
+function retryReport(db, { id }, username) {
+  return tx(db, () => {
+    const r = db.prepare("SELECT * FROM erp_report WHERE id = ?").get(Number(id));
+    if (!r) throw fail("Kh\xF4ng t\xECm th\u1EA5y d\xF2ng b\xE1o k\u1EBFt qu\u1EA3.", 404);
+    if (r.status !== "error") throw fail("Ch\u1EC9 g\u1EEDi l\u1EA1i \u0111\u01B0\u1EE3c d\xF2ng b\u1ECB ERP t\u1EEB ch\u1ED1i.");
+    db.prepare("UPDATE erp_report SET status = 'pending', error = NULL WHERE id = ?").run(r.id);
+    audit(db, username, "erp.req.retry", { id: r.id, request: r.erp_req });
+    return { ok: true, message: `S\u1EBD g\u1EEDi l\u1EA1i ${r.erp_req} trong l\u01B0\u1EE3t t\u1EDBi (\u2264 2 ph\xFAt).` };
+  });
+}
+function dropReport(db, { id, note }, username) {
+  const why = String(note || "").trim().slice(0, 200);
+  if (!why) throw fail("Ghi l\xFD do b\u1ECF qua (VD: Kho \u0111\xE3 x\u1EED l\xFD tr\u1EF1c ti\u1EBFp tr\xEAn ERP).");
+  return tx(db, () => {
+    const r = db.prepare("SELECT * FROM erp_report WHERE id = ?").get(Number(id));
+    if (!r) throw fail("Kh\xF4ng t\xECm th\u1EA5y d\xF2ng b\xE1o k\u1EBFt qu\u1EA3.", 404);
+    if (r.status !== "error") throw fail("Ch\u1EC9 b\u1ECF qua \u0111\u01B0\u1EE3c d\xF2ng b\u1ECB ERP t\u1EEB ch\u1ED1i.");
+    db.prepare("UPDATE erp_report SET status = 'dropped', error = ? WHERE id = ?").run(`${r.error || ""} \xB7 B\u1ECF qua: ${why}`.slice(0, 500), r.id);
+    audit(db, username, "erp.req.drop", { id: r.id, request: r.erp_req, note: why });
+    return { ok: true, message: `\u0110\xE3 b\u1ECF qua b\xE1o c\xE1o ${r.erp_req}.` };
+  });
+}
+function erpRequestRoutes(db, makePost) {
+  ensureErpReqSchema(db);
+  return [
+    { method: "GET", path: "/api/erp/req", handler: () => erpReqStatus(db) },
+    { method: "POST", path: "/api/erp/req/sync", handler: ({ user }) => syncErpRequests(db, makePost, { username: user.username, source: `\u0110\u1ED3ng b\u1ED9 tay \xB7 ${user.username}` }) },
+    { method: "POST", path: "/api/erp/req/retry", handler: ({ body, user }) => retryReport(db, body || {}, user.username) },
+    { method: "POST", path: "/api/erp/req/drop", handler: ({ body, user }) => dropReport(db, body || {}, user.username) }
+  ];
+}
+
 // ../kitting-app/lib/kitting.mjs
 var REASONS = { PO_CANCEL: "PO h\u1EE7y / ho\xE3n", URGENT: "PO g\u1EA5p c\u1EA7n v\u1EADt li\u1EC7u", DEFECT: "V\u1EADt li\u1EC7u l\u1ED7i", MODEL_CHANGE: "\u0110\u1ED5i Model / BOM", OTHER: "Kh\xE1c" };
 var TXN_LABEL = { kit: "Kitting", deliver: "Giao line", debt_settle: "Giao b\xF9 n\u1EE3", short_confirm: "Xong c\xF2n thi\u1EBFu", transfer_out: "Chuy\u1EC3n \u0111i", transfer_in: "Nh\u1EADn chuy\u1EC3n", return: "Tr\u1EA3 kho", recall: "Thu h\u1ED3i t\u1EEB line", issue: "C\u1EA5p v\u1EADt li\u1EC7u", po_cancel: "G\u1EE1 PO h\u1EE7y", round: "L\xE0m tr\xF2n \u0111\u1ECBnh m\u1EE9c", start: "B\u1EAFt \u0111\u1EA7u kitting", unstart: "V\u1EC1 ch\u01B0a l\xE0m" };
 var GROUPS = { VLN: ["VLN"], HV: ["REAR", "VLDT"] };
-var r34 = (n) => Math.round(Number(n) * 1e3) / 1e3;
+var r35 = (n) => Math.round(Number(n) * 1e3) / 1e3;
 function loadKit2(db, id) {
   const kit = db.prepare("SELECT * FROM kit_order WHERE id = ?").get(Number(id));
   if (!kit) throw fail("PO / Kit PO kh\xF4ng c\xF2n t\u1ED3n t\u1EA1i. H\xE3y t\u1EA3i l\u1EA1i.", 409);
@@ -2159,6 +2576,8 @@ function kitHeader(db, kit, ro) {
     remain: pos.reduce((s, p) => s + p.remain_qty, 0),
     state: states.size === 1 ? [...states][0] : states.has("running") || states.has("done") ? "running" : "waiting",
     pos: pos.map((p) => ({ po: p.po_no, modelCode: p.model_code, qty: p.plan_qty, remain: p.remain_qty, state: productionState(p) })),
+    erp: kit.erp_req || "",
+    // Kit sinh từ phiếu Kế hoạch ERP (erp-request.mjs): vật liệu theo danh sách ERP
     cancelled: pos.filter(isCancelled).map((p) => p.po_no),
     fixedLine: fixedLineOf(pos),
     planLine: kit.plan_line || "",
@@ -2183,7 +2602,7 @@ function bomLines(db, pos, modelCode, grp, soft = false) {
       if (soft) return { missing: [model || modelCode], lines: [] };
       throw fail(`Model ${model} ch\u01B0a c\xF3 BOM VLN.`);
     }
-    return { missing: [], lines: rows.map((r) => ({ kit_group: "VLN", model_code: "", material: r.material, description: r.description, point: r.point, required: r34(qty * r.point) })) };
+    return { missing: [], lines: rows.map((r) => ({ kit_group: "VLN", model_code: "", material: r.material, description: r.description, point: r.point, required: r35(qty * r.point) })) };
   }
   const hvRows = (code) => db.prepare(`SELECT material, description, point, kit_group FROM bom WHERE model_code = ? AND kit_group IN ('REAR','VLDT') ORDER BY kit_group DESC, material`).all(code);
   const byCode = /* @__PURE__ */ new Map(), rearQty = /* @__PURE__ */ new Map();
@@ -2196,16 +2615,17 @@ function bomLines(db, pos, modelCode, grp, soft = false) {
   const lines = [];
   for (const [code, q] of byCode) for (const r of hvRows(code)) {
     const n = r.kit_group === "REAR" ? rearQty.get(code) : q;
-    if (n > 0) lines.push({ kit_group: r.kit_group, model_code: code, material: r.material, description: r.description, point: r.point, required: r34(n * r.point) });
+    if (n > 0) lines.push({ kit_group: r.kit_group, model_code: code, material: r.material, description: r.description, point: r.point, required: r35(n * r.point) });
   }
   return { missing, lines };
 }
 function ensureItems(db, kit, grp) {
+  if (kit.erp_req) return;
   const pos = kitPos(db, kit.id), ins = db.prepare("INSERT INTO kit_item(kit_id, grp, kit_group, model_code, material, description, required) VALUES (?,?,?,?,?,?,?)");
   const exist = items(db, kit.id, grp);
   if (exist.length) {
     if (!(grp === "HV" && pos.some(isUnplan) && exist.every((i) => i.kitted <= 0))) return;
-    const want = bomLines(db, pos, kit.model_code, grp, true).lines, sig = (l) => l.map((i) => `${i.model_code}|${i.material}|${r34(i.required)}`).sort().join(";");
+    const want = bomLines(db, pos, kit.model_code, grp, true).lines, sig = (l) => l.map((i) => `${i.model_code}|${i.material}|${r35(i.required)}`).sort().join(";");
     if (!want.length || sig(want) === sig(exist)) return;
     db.prepare("DELETE FROM kit_item WHERE kit_id = ? AND grp = ?").run(kit.id, grp);
     for (const r of want) ins.run(kit.id, grp, r.kit_group, r.model_code, r.material, r.description, r.required);
@@ -2226,20 +2646,20 @@ function materialSummary(db, { to, unplanned = false } = {}) {
     for (const p of live) qtyOf.set(p.model_code, (qtyOf.get(p.model_code) || 0) + p.plan_qty);
     const total = [...qtyOf.values()].reduce((a, b) => a + b, 0);
     let list = src.kitId ? items(db, src.kitId, grp).map((i) => __spreadValues({}, i)) : [];
-    if (grp === "HV" && live.some(isUnplan) && list.every((i) => i.kitted <= 0)) list = [];
-    if (!list.length) {
+    if (!src.erp && grp === "HV" && live.some(isUnplan) && list.every((i) => i.kitted <= 0)) list = [];
+    if (!list.length && !src.erp) {
       const b = bomLines(db, live, modelCode, grp, true);
       if (b.missing.length) noBom.push({ code: src.code, grp, missing: b.missing });
       list = b.lines.map((l) => __spreadProps(__spreadValues({}, l), { kitted: 0 }));
     }
     for (const i of list) {
       const parts = i.model_code ? [[i.model_code, 1]] : [...qtyOf].map(([c, q]) => [c, total ? q / total : 0]);
-      for (const [code, f] of parts) rows.push({ day: src.day, mrank: src.mrank, kit: src.code, model: src.model, code, grp: i.kit_group, material: i.material, description: i.description || "", required: r34(i.required * f), kitted: r34(i.kitted * f) });
+      for (const [code, f] of parts) rows.push({ day: src.day, mrank: src.mrank, kit: src.code, model: src.model, code, grp: i.kit_group, material: i.material, description: i.description || "", required: r35(i.required * f), kitted: r35(i.kitted * f) });
     }
   };
   const kits = db.prepare(`SELECT * FROM kit_order WHERE ${unplanned ? "(plan_day IS NULL OR plan_day <= ?)" : "plan_day IS NOT NULL AND plan_day <= ?"} AND NOT (vln_status = 'delivered' AND hv_status = 'delivered') ORDER BY plan_day, seq, id`).all(to);
   for (const k of kits) {
-    const pos = kitPos(db, k.id), src = { kitId: k.id, day: k.plan_day || "", mrank: (_b = (_a = rk.get(k.id)) == null ? void 0 : _a.mrank) != null ? _b : null, code: k.code, model: modelOf(db, k.model_code, (_c = pos[0]) == null ? void 0 : _c.basic_model) };
+    const pos = kitPos(db, k.id), src = { kitId: k.id, erp: !!k.erp_req, day: k.plan_day || "", mrank: (_b = (_a = rk.get(k.id)) == null ? void 0 : _a.mrank) != null ? _b : null, code: k.code, model: modelOf(db, k.model_code, (_c = pos[0]) == null ? void 0 : _c.basic_model) };
     add(src, pos, k.model_code, "VLN", k.vln_status);
     add(src, pos, k.model_code, "HV", k.hv_status);
   }
@@ -2251,7 +2671,7 @@ function materialSummary(db, { to, unplanned = false } = {}) {
       add(src, [p], p.model_code, "HV", "pending");
     }
   }
-  for (const r of rows) r.remain = r34(Math.max(0, r.required - r.kitted));
+  for (const r of rows) r.remain = r35(Math.max(0, r.required - r.kitted));
   return { to, unplanned: !!unplanned, today: todayKey(), kits: new Set(rows.map((r) => r.kit)).size, rows, noBom, kitPo };
 }
 function items(db, kitId, grp) {
@@ -2265,12 +2685,12 @@ function roundItems(db, kit, grp, user) {
   const up = db.prepare("UPDATE kit_item SET required = ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?");
   for (const i of items(db, kit.id, grp)) if (!isWhole2(i.required) && enough(i) && i.kitted <= kitCap(i.required)) {
     up.run(i.kitted, kit.id, grp, i.model_code, i.material);
-    logTxn(db, { kitCode: kit.code, type: "round", grp, kitGroup: i.kit_group, material: i.material, qty: r34(i.kitted - i.required), ref: i.model_code, note: `\u0110\u1ECBnh m\u1EE9c ${r34(i.required)} \u2192 c\u1EA5p ${i.kitted}`, user });
+    logTxn(db, { kitCode: kit.code, type: "round", grp, kitGroup: i.kit_group, material: i.material, qty: r35(i.kitted - i.required), ref: i.model_code, note: `\u0110\u1ECBnh m\u1EE9c ${r35(i.required)} \u2192 c\u1EA5p ${i.kitted}`, user });
   }
 }
 function progress(list) {
   const total = list.length, full = list.filter(enough).length, short = total - full;
-  return { total, full, short, kittedQty: r34(list.reduce((s, i) => s + i.kitted, 0)), requiredQty: r34(list.reduce((s, i) => s + i.required, 0)) };
+  return { total, full, short, kittedQty: r35(list.reduce((s, i) => s + i.kitted, 0)), requiredQty: r35(list.reduce((s, i) => s + i.required, 0)) };
 }
 function rearZeroCodes(list) {
   const m = /* @__PURE__ */ new Map();
@@ -2290,7 +2710,7 @@ function recompute(db, kit, grp) {
   if (list.some((i) => !enough(i))) return setStatus(db, kit.id, grp, cur === "pending" ? "progress" : cur === "done" ? "progress" : cur);
 }
 function logTxn(db, t4) {
-  db.prepare("INSERT INTO kit_txn(kit_code, type, grp, kit_group, material, qty, ref_code, line, reason_code, note, username) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(t4.kitCode || "", t4.type, t4.grp || null, t4.kitGroup || null, t4.material || null, r34(t4.qty || 0), t4.ref || null, t4.line || null, t4.reason || null, t4.note || null, t4.user || "");
+  db.prepare("INSERT INTO kit_txn(kit_code, type, grp, kit_group, material, qty, ref_code, line, reason_code, note, username) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(t4.kitCode || "", t4.type, t4.grp || null, t4.kitGroup || null, t4.material || null, r35(t4.qty || 0), t4.ref || null, t4.line || null, t4.reason || null, t4.note || null, t4.user || "");
 }
 function kitQueue(db, grp) {
   const rk = ranks(db);
@@ -2306,7 +2726,7 @@ function kitQueue(db, grp) {
       progress: list.length ? progress(list) : null,
       rearZero: grp === "HV" && list.length > 0 && rz.length === new Set(list.filter((i) => i.kit_group === "REAR").map((i) => i.model_code)).size && rz.length > 0,
       rearZeroCodes: grp === "HV" ? rz : [],
-      noBom: !list.length && h.codes.some((c2) => !db.prepare("SELECT 1 FROM bom WHERE model_code = ? LIMIT 1").get(c2))
+      noBom: !k.erp_req && !list.length && h.codes.some((c2) => !db.prepare("SELECT 1 FROM bom WHERE model_code = ? LIMIT 1").get(c2))
     });
   });
   rows.sort((a, b) => {
@@ -2367,6 +2787,7 @@ function saveKitting(db, { kitId, grp, items: input, confirm, shortReason, short
     const kit = loadKit2(db, kitId);
     if (kit[statusCol(grp)] === "delivered") throw fail("PO \u0111\xE3 giao line, kh\xF4ng s\u1EEDa kitting \u0111\u01B0\u1EE3c. D\xF9ng \u0110i\u1EC1u ch\u1EC9nh kit.");
     if (grp === "HV" && kit.vln_status === "pending") throw fail("PO ch\u01B0a b\u1EAFt \u0111\u1EA7u kitting VLN.");
+    assertErpOpen(db, kit.erp_req);
     ensureItems(db, kit, grp);
     const cur = new Map(items(db, kit.id, grp).map((i) => [ikey2(i.model_code, i.material), i]));
     const upd = db.prepare("UPDATE kit_item SET kitted = ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?");
@@ -2375,11 +2796,11 @@ function saveKitting(db, { kitId, grp, items: input, confirm, shortReason, short
       if (!row) throw fail(`M\xE3 ${it.material} kh\xF4ng thu\u1ED9c kit n\xE0y.`);
       const v = Number(it.kitted);
       if (!Number.isFinite(v) || v < 0) throw fail(`S\u1ED1 kitting c\u1EE7a ${row.material} kh\xF4ng h\u1EE3p l\u1EC7.`);
-      if (!isWhole2(row.required) && !Number.isInteger(v)) throw fail(`${row.material}: \u0111\u1ECBnh m\u1EE9c l\u1EBB ${r34(row.required)}, nh\u1EADp s\u1ED1 nguy\xEAn (t\u1ED1i \u0111a ${kitCap(row.required)}).`);
+      if (!isWhole2(row.required) && !Number.isInteger(v)) throw fail(`${row.material}: \u0111\u1ECBnh m\u1EE9c l\u1EBB ${r35(row.required)}, nh\u1EADp s\u1ED1 nguy\xEAn (t\u1ED1i \u0111a ${kitCap(row.required)}).`);
       if (v > kitCap(row.required)) throw fail(`${row.material}: kh\xF4ng kitting qu\xE1 s\u1ED1 c\u1EA7n (${kitCap(row.required)}).`);
-      if (r34(v) !== r34(row.kitted)) {
-        upd.run(r34(v), kit.id, grp, row.model_code, row.material);
-        logTxn(db, { kitCode: kit.code, type: "kit", grp, kitGroup: row.kit_group, material: row.material, qty: r34(v - row.kitted), user });
+      if (r35(v) !== r35(row.kitted)) {
+        upd.run(r35(v), kit.id, grp, row.model_code, row.material);
+        logTxn(db, { kitCode: kit.code, type: "kit", grp, kitGroup: row.kit_group, material: row.material, qty: r35(v - row.kitted), user });
       }
     }
     const list = items(db, kit.id, grp), any = list.some((i) => i.kitted > 0);
@@ -2517,7 +2938,7 @@ function debts(db) {
   const byKit = /* @__PURE__ */ new Map();
   for (const r of rows) {
     if (!byKit.has(r.id)) byKit.set(r.id, { kitId: r.id, code: r.code, line: r.line, deliveredAt: r.delivered_at, modelCode: r.model_code, items: [] });
-    byKit.get(r.id).items.push({ grp: r.grp, kitGroup: r.kit_group, code: r.item_code, material: r.material, description: r.description, debt: r34(r.required - r.delivered), required: r.required, delivered: r34(r.delivered) });
+    byKit.get(r.id).items.push({ grp: r.grp, kitGroup: r.kit_group, code: r.item_code, material: r.material, description: r.description, debt: r35(r.required - r.delivered), required: r.required, delivered: r35(r.delivered) });
   }
   const list = [...byKit.values()];
   ensureLotSchema(db);
@@ -2525,11 +2946,11 @@ function debts(db) {
     const st = lotStats(db, k.kitId), prep = new Map(db.prepare("SELECT * FROM kit_bu WHERE kit_id = ?").all(k.kitId).map((b) => [lotKey(b.grp, b.model_code, b.material), b]));
     for (const i of k.items) {
       const key2 = lotKey(i.grp, i.code, i.material), s = st.get(key2), b = prep.get(key2);
-      Object.assign(i, { cap: isWhole2(i.debt) ? i.debt : Math.ceil(i.debt), bu: (s == null ? void 0 : s.bu) || 0, buN: (s == null ? void 0 : s.n) || 0, prepared: b ? r34(b.qty) : 0, preparedBy: (b == null ? void 0 : b.username) || "" });
+      Object.assign(i, { cap: isWhole2(i.debt) ? i.debt : Math.ceil(i.debt), bu: (s == null ? void 0 : s.bu) || 0, buN: (s == null ? void 0 : s.n) || 0, prepared: b ? r35(b.qty) : 0, preparedBy: (b == null ? void 0 : b.username) || "" });
     }
     k.lots = lotCount(db, k.kitId);
   }
-  return { rows: list, kpi: { kits: list.length, items: rows.length, ea: r34(rows.reduce((s, r) => s + r.required - r.delivered, 0)), rear: rows.filter((r) => r.kit_group === "REAR").length } };
+  return { rows: list, kpi: { kits: list.length, items: rows.length, ea: r35(rows.reduce((s, r) => s + r.required - r.delivered, 0)), rear: rows.filter((r) => r.kit_group === "REAR").length } };
 }
 function settleDebt(db, { kitId, material, grp, code = "", qty, items: list }, user) {
   ensureLotSchema(db);
@@ -2559,7 +2980,7 @@ function adjustOptions(db, kitId) {
     delivered: kit.vln_status === "delivered",
     reasons: REASONS,
     targets,
-    items: items(db, kit.id).map((i) => ({ grp: i.grp, kitGroup: i.kit_group, code: i.model_code, material: i.material, required: i.required, kitted: i.kitted, delivered: i.delivered, free: r34(i.kitted - i.delivered) }))
+    items: items(db, kit.id).map((i) => ({ grp: i.grp, kitGroup: i.kit_group, code: i.model_code, material: i.material, required: i.required, kitted: i.kitted, delivered: i.delivered, free: r35(i.kitted - i.delivered) }))
   };
 }
 function adjust(db, { kitId, type, targetId, reasonCode, note, items: input }, user) {
@@ -2584,21 +3005,21 @@ function adjust(db, { kitId, type, targetId, reasonCode, note, items: input }, u
     for (const it of lines) {
       const row = db.prepare("SELECT * FROM kit_item WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").get(kit.id, it.grp, String(it.code || ""), it.material);
       if (!row) throw fail(`M\xE3 ${it.material} kh\xF4ng thu\u1ED9c kit.`);
-      const q = r34(Number(it.qty));
+      const q = r35(Number(it.qty));
       if (type === "recall") {
         if (q > row.delivered) throw fail(`${row.material}: ch\u1EC9 thu h\u1ED3i t\u1ED1i \u0111a ${row.delivered}.`);
         db.prepare("UPDATE kit_item SET delivered = delivered - ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").run(q, kit.id, row.grp, row.model_code, row.material);
         logTxn(db, { kitCode: kit.code, type: "recall", grp: row.grp, kitGroup: row.kit_group, material: row.material, qty: q, line: kit.line, reason: reasonCode, note, user });
         continue;
       }
-      const free = r34(row.kitted - row.delivered);
+      const free = r35(row.kitted - row.delivered);
       if (q > free) throw fail(`${row.material}: ch\u1EC9 c\xF2n ${free} c\xF3 th\u1EC3 l\u1EA5y.`);
       if (type === "transfer") {
         if (row.grp === "HV" && !kitPos(db, target.id).some((p) => p.model_code === row.model_code)) throw fail(`${row.material} (Rear/VL\u0110T) ch\u1EC9 chuy\u1EC3n cho PO c\xF3 Model Code ${row.model_code}.`);
         ensureItems(db, target, row.grp);
         const trow = db.prepare("SELECT * FROM kit_item WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").get(target.id, row.grp, row.model_code, row.material);
         if (!trow) throw fail(`${target.code} kh\xF4ng d\xF9ng m\xE3 ${row.material}.`);
-        if (trow.kitted + q > trow.required) throw fail(`${target.code} ch\u1EC9 c\u1EA7n th\xEAm ${r34(trow.required - trow.kitted)} ${row.material}.`);
+        if (trow.kitted + q > trow.required) throw fail(`${target.code} ch\u1EC9 c\u1EA7n th\xEAm ${r35(trow.required - trow.kitted)} ${row.material}.`);
         db.prepare("UPDATE kit_item SET kitted = kitted + ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").run(q, target.id, row.grp, row.model_code, row.material);
         logTxn(db, { kitCode: target.code, type: "transfer_in", grp: row.grp, kitGroup: row.kit_group, material: row.material, qty: q, ref: kit.code, reason: reasonCode, note, user });
         tTouched.add(row.grp);
@@ -2630,9 +3051,9 @@ function history(db, { days = 7, type = "" } = {}) {
   const adj = all.filter((r) => ["transfer_out", "return", "recall"].includes(r.type));
   const byReason = Object.entries(REASONS).map(([code, label]) => {
     const list = adj.filter((r) => r.reason_code === code);
-    return { code, label, times: new Set(list.map((r) => r.kit_code + r.type)).size, lines: list.length, ea: r34(list.reduce((s, r) => s + r.qty, 0)) };
+    return { code, label, times: new Set(list.map((r) => r.kit_code + r.type)).size, lines: list.length, ea: r35(list.reduce((s, r) => s + r.qty, 0)) };
   }).filter((r) => r.lines);
-  const byType = ["transfer_out", "return", "recall"].map((t4) => ({ type: t4, label: TXN_LABEL[t4], lines: adj.filter((r) => r.type === t4).length, ea: r34(adj.filter((r) => r.type === t4).reduce((s, r) => s + r.qty, 0)) }));
+  const byType = ["transfer_out", "return", "recall"].map((t4) => ({ type: t4, label: TXN_LABEL[t4], lines: adj.filter((r) => r.type === t4).length, ea: r35(adj.filter((r) => r.type === t4).reduce((s, r) => s + r.qty, 0)) }));
   return {
     rows: rows.map((r) => __spreadProps(__spreadValues({}, r), { typeLabel: TXN_LABEL[r.type] || r.type, reason: REASONS[r.reason_code] || "" })),
     byReason,
@@ -2641,7 +3062,7 @@ function history(db, { days = 7, type = "" } = {}) {
       kitted: new Set(all.filter((r) => r.type === "kit").map((r) => r.kit_code)).size,
       delivered: new Set(all.filter((r) => r.type === "deliver").map((r) => r.kit_code)).size,
       adjust: new Set(adj.map((r) => r.kit_code + r.type + r.reason_code)).size,
-      adjustEa: r34(adj.reduce((s, r) => s + r.qty, 0))
+      adjustEa: r35(adj.reduce((s, r) => s + r.qty, 0))
     }
   };
 }
@@ -2717,6 +3138,7 @@ function issueRequest(db, { id, qty }, user) {
   if (!r) throw fail("Kh\xF4ng t\xECm th\u1EA5y y\xEAu c\u1EA7u.", 404);
   if (r.status !== "approved") throw fail("Y\xEAu c\u1EA7u ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t.");
   if (r.kind === "po") throw fail("Y\xEAu c\u1EA7u PO: giao \u1EDF tab Kho \u2192 Giao line.");
+  assertErpOpen(db, r.erp_req);
   const q = Number(qty != null ? qty : r.qty);
   if (!Number.isFinite(q) || q <= 0) throw fail("S\u1ED1 c\u1EA5p ph\u1EA3i > 0.");
   db.prepare("UPDATE material_request SET status = 'issued', issued_qty = ?, issued_by = ?, issued_at = datetime('now') WHERE id = ?").run(q, user, r.id);
@@ -2737,6 +3159,7 @@ function cancelAlerts(db) {
 function dropCancelled(db, { kitId }, user) {
   return tx(db, () => {
     const kit = loadKit2(db, kitId), pos = kitPos(db, kit.id), gone = pos.filter(isCancelled);
+    assertNotErpKit(kit, "g\u1EE1 PO");
     if (!gone.length) throw fail(`${kit.code} kh\xF4ng c\xF3 PO h\u1EE7y.`);
     if (kit.vln_status === "delivered") throw fail(`${kit.code} \u0111\xE3 giao ${kit.line}: thu h\u1ED3i t\u1EEB line tr\u01B0\u1EDBc (\u0110i\u1EC1u ch\u1EC9nh kit \u2192 Thu h\u1ED3i).`);
     const left = items(db, kit.id).filter((i) => i.kitted > 0);
@@ -2757,6 +3180,7 @@ function dropCancelled(db, { kitId }, user) {
 function internalPo(db, po) {
   const p = db.prepare("SELECT * FROM po WHERE po_key = ?").get(normalizePo(po));
   if (!p) throw fail("Kh\xF4ng t\xECm th\u1EA5y PO.", 404);
+  if (p.erp_req) throw fail(`${p.po_no} thu\u1ED9c phi\u1EBFu ERP ${p.erp_req}: s\u1EEDa / h\u1EE7y tr\xEAn ERP.`);
   if (!PO_TYPES[p.po_type]) throw fail(`${p.po_no} kh\xF4ng ph\u1EA3i PO n\u1ED9i b\u1ED9 (Unplan / RMA).`);
   if (isCancelled(p)) throw fail(`${p.po_no} \u0111\xE3 h\u1EE7y.`);
   const kit = db.prepare("SELECT k.* FROM kit_order_po x JOIN kit_order k ON k.id = x.kit_id WHERE x.po_key = ?").get(p.po_key) || null;
@@ -3066,9 +3490,9 @@ function undo(db, username) {
     const snap = JSON.parse(r.data);
     const cur = snap.pos.length ? db.prepare(`SELECT DISTINCT k.* FROM kit_order k JOIN kit_order_po x ON x.kit_id = k.id WHERE x.po_key IN (${placeholders(snap.pos.length)})`).all(...snap.pos) : [];
     const core = new Set(snap.core || snap.pos);
-    const started = cur.filter((k) => !pending(k) && db.prepare("SELECT po_key FROM kit_order_po WHERE kit_id = ?").all(k.id).some((r2) => core.has(r2.po_key)));
+    const started = cur.filter((k) => (!pending(k) || k.erp_req) && db.prepare("SELECT po_key FROM kit_order_po WHERE kit_id = ?").all(k.id).some((r2) => core.has(r2.po_key)));
     if (started.length) throw fail(`Kho \u0111\xE3 b\u1EAFt \u0111\u1EA7u kitting ${started.map((k) => k.code).join(", ")} \u2014 kh\xF4ng ho\xE0n t\xE1c \u0111\u01B0\u1EE3c.`);
-    for (const k of cur.filter(pending)) {
+    for (const k of cur.filter((k2) => pending(k2) && !k2.erp_req)) {
       db.prepare("DELETE FROM kit_item WHERE kit_id = ?").run(k.id);
       db.prepare("DELETE FROM kit_order_po WHERE kit_id = ?").run(k.id);
       db.prepare("DELETE FROM kit_order WHERE id = ?").run(k.id);
@@ -3111,6 +3535,7 @@ function batchMove(db, { items: items2, day, position = "end" }, username) {
       const k = db.prepare("SELECT * FROM kit_order WHERE id = ?").get(Number(it.id));
       if (!k) throw fail("Kit PO kh\xF4ng c\xF2n t\u1ED3n t\u1EA1i. T\u1EA3i l\u1EA1i.", 409);
       if (!pending(k)) throw fail(`${k.code} kho \u0111\xE3 b\u1EAFt \u0111\u1EA7u kitting, kh\xF4ng chuy\u1EC3n \u0111\u01B0\u1EE3c.`);
+      if (day === null && k.erp_req) throw fail(`${k.code} l\xE0 Kit c\u1EE7a phi\u1EBFu ERP ${k.erp_req}: kh\xF4ng \u0111\u01B0a v\u1EC1 PO ch\u01B0a l\u1EADp \u0111\u01B0\u1EE3c.`);
       if (day === null) {
         if (k.kind === "single") {
           db.prepare("DELETE FROM kit_item WHERE kit_id = ?").run(k.id);
@@ -3345,7 +3770,7 @@ function autoPlan(db, input) {
     const printed = printedCodes(db);
     const hosts = [
       ...rows.map((r) => ({ row: r, model: r.model, qty: r.qty, start: r.start, lines: [...r.lines], code: r.code, day: r.day })),
-      ...db.prepare("SELECT * FROM kit_order WHERE plan_day IS NOT NULL").all().filter((k) => pending2(k) && !printed.has(k.code)).map(kitInfo2).filter((k) => !k.cancelled).map((k) => ({ kit: k, model: k.model, qty: k.qty, start: k.start, lines: [...k.lines], code: k.code, day: k.plan_day }))
+      ...db.prepare("SELECT * FROM kit_order WHERE plan_day IS NOT NULL").all().filter((k) => pending2(k) && !printed.has(k.code) && !k.erp_req).map(kitInfo2).filter((k) => !k.cancelled).map((k) => ({ kit: k, model: k.model, qty: k.qty, start: k.start, lines: [...k.lines], code: k.code, day: k.plan_day }))
     ];
     const internals = pool.filter((p) => p.type !== "SAP" && okModel(p.model)).sort((a, b) => a.start.localeCompare(b.start) || a.po.localeCompare(b.po));
     const ts = (s) => s ? Date.parse(`${s.slice(0, 10)}T${s.slice(11, 16) || "00:00"}:00Z`) : 0;
@@ -3587,7 +4012,7 @@ function planImport(db, body, username, apply2 = false) {
   const lines = new Set(db.prepare("SELECT name FROM lines WHERE active = 1").all().map((r) => r.name));
   const poOf = db.prepare("SELECT * FROM po WHERE po_key = ?"), kitOf = db.prepare("SELECT k.* FROM kit_order_po x JOIN kit_order k ON k.id = x.kit_id WHERE x.po_key = ?");
   const kitPoKeys = (id) => db.prepare("SELECT po_key FROM kit_order_po WHERE kit_id = ?").all(id).map((r) => r.po_key);
-  const printed = printedCodes(db), locked = (k) => k.vln_status !== "pending" || k.hv_status !== "pending" || printed.has(k.code);
+  const printed = printedCodes(db), locked = (k) => k.vln_status !== "pending" || k.hv_status !== "pending" || printed.has(k.code) || !!k.erp_req;
   const seen = /* @__PURE__ */ new Map();
   const plan = [];
   for (const sh of parsed) {
@@ -3807,7 +4232,7 @@ function planRoutes(db) {
 var RECEIPT_REASONS = { SHORT: "Thi\u1EBFu s\u1ED1 l\u01B0\u1EE3ng so v\u1EDBi phi\u1EBFu", OVER: "Th\u1EEBa s\u1ED1 l\u01B0\u1EE3ng so v\u1EDBi phi\u1EBFu", WRONG: "Sai m\xE3 / l\u1EABn v\u1EADt li\u1EC7u", DAMAGED: "V\u1EADt li\u1EC7u l\u1ED7i / h\u1ECFng", NO_REAR: "Thi\u1EBFu Rear", OTHER: "Kh\xE1c" };
 var RECEIPT_STATUS = { pending: "Ch\u1EDD nh\u1EADn", received: "\u0110\xE3 nh\u1EADn", rejected: "T\u1EEB ch\u1ED1i" };
 var INT_STATES = { waiting: "Ch\u1EDD SX", running: "\u0110ang SX", done: "Ho\xE0n th\xE0nh" };
-var r35 = (n) => Math.round(Number(n) * 1e3) / 1e3;
+var r36 = (n) => Math.round(Number(n) * 1e3) / 1e3;
 var t2 = (v) => String(v != null ? v : "").trim();
 function ensureReceiptSchema(db) {
   db.exec(`
@@ -3842,7 +4267,7 @@ function scanMatches(kit, pos, scanned) {
 }
 function itemsOf(db, kitId) {
   return db.prepare(`SELECT grp, kit_group, model_code, material, description, required, delivered FROM kit_item WHERE kit_id = ?
-    ORDER BY CASE kit_group WHEN 'REAR' THEN 0 WHEN 'VLDT' THEN 1 ELSE 2 END, model_code, material`).all(kitId).map((i) => ({ grp: i.grp, group: i.kit_group, code: i.model_code, material: i.material, description: i.description || "", required: r35(i.required), delivered: r35(i.delivered), debt: r35(Math.max(0, i.required - i.delivered)) }));
+    ORDER BY CASE kit_group WHEN 'REAR' THEN 0 WHEN 'VLDT' THEN 1 ELSE 2 END, model_code, material`).all(kitId).map((i) => ({ grp: i.grp, group: i.kit_group, code: i.model_code, material: i.material, description: i.description || "", required: r36(i.required), delivered: r36(i.delivered), debt: r36(Math.max(0, i.required - i.delivered)) }));
 }
 var snapOf = (list) => JSON.stringify(list.map((i) => [i.group, i.code, i.material, i.required, i.delivered, i.debt]));
 function receiptView(db, kitId) {
@@ -3852,7 +4277,7 @@ function receiptView(db, kitId) {
   const st = lotStats(db, kit.id), list = itemsOf(db, kit.id).map((i) => {
     const s = st.get(lotKey(i.grp, i.code, i.material));
     const bu = (s == null ? void 0 : s.bu) || 0;
-    return __spreadProps(__spreadValues({}, i), { initial: r35(Math.max(0, i.delivered - bu)), bu, buN: (s == null ? void 0 : s.n) || 0 });
+    return __spreadProps(__spreadValues({}, i), { initial: r36(Math.max(0, i.delivered - bu)), bu, buN: (s == null ? void 0 : s.n) || 0 });
   });
   const lots = lotsOfKit(db, kit.id);
   const log = db.prepare("SELECT * FROM kit_receipt_log WHERE kit_id = ? ORDER BY id DESC LIMIT 20").all(kit.id).map((l) => ({ action: l.action, signer: l.signer || "", by: l.username || "", reason: RECEIPT_REASONS[l.reason] || "", note: l.note || "", at: l.created_at }));
@@ -3874,7 +4299,7 @@ function receiptView(db, kitId) {
     items: list,
     lots,
     lotStatus: LOT_STATUS,
-    totals: { bu: r35(list.reduce((s, i) => s + i.bu, 0)), lotsPending: lots.filter((l) => l.status === "pending").length, lotsRejected: lots.filter((l) => l.status === "rejected").length, items: list.length, required: r35(list.reduce((s, i) => s + i.required, 0)), delivered: r35(list.reduce((s, i) => s + i.delivered, 0)), debtItems: list.filter((i) => i.debt > 0).length, debt: r35(list.reduce((s, i) => s + i.debt, 0)), rearDebt: list.filter((i) => i.group === "REAR" && i.debt > 0).length },
+    totals: { bu: r36(list.reduce((s, i) => s + i.bu, 0)), lotsPending: lots.filter((l) => l.status === "pending").length, lotsRejected: lots.filter((l) => l.status === "rejected").length, items: list.length, required: r36(list.reduce((s, i) => s + i.required, 0)), delivered: r36(list.reduce((s, i) => s + i.delivered, 0)), debtItems: list.filter((i) => i.debt > 0).length, debt: r36(list.reduce((s, i) => s + i.debt, 0)), rearDebt: list.filter((i) => i.group === "REAR" && i.debt > 0).length },
     reasons: RECEIPT_REASONS,
     log
   };
@@ -3954,7 +4379,7 @@ function khoReceipts(db) {
       note: r.note || "",
       deliveredAt: r.delivered_at,
       debtItems: list.filter((i) => i.debt > 0).length,
-      debt: r35(list.reduce((s, i) => s + i.debt, 0))
+      debt: r36(list.reduce((s, i) => s + i.debt, 0))
     };
   });
   return { rows, pending: pendingCount(db), lots: rejectedLots(db), lotsPending: db.prepare("SELECT COUNT(*) n FROM kit_lot l JOIN kit_order k ON k.id = l.kit_id WHERE l.status = 'pending' AND k.vln_status = 'delivered'").get().n };
@@ -4549,7 +4974,7 @@ function dispatchView(db, { day, shift } = {}) {
 }
 
 // ../kitting-app/lib/debt-ledger.mjs
-var r36 = (n) => Math.round(Number(n) * 1e3) / 1e3;
+var r37 = (n) => Math.round(Number(n) * 1e3) / 1e3;
 var DAY = /^\d{4}-\d{2}-\d{2}$/;
 var utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
 var vnDayStart = (d) => Date.parse(`${d}T00:00:00Z`) - 7 * 36e5;
@@ -4591,8 +5016,8 @@ function debtLedger(db, { from, to, line } = {}) {
     seen.add(k);
     const it = item.get(o.kit_code, o.grp, o.ref_code || "", o.material);
     const pays = bySettle.get(k) || [];
-    const paid = r36(pays.reduce((s, t4) => s + t4.qty, 0));
-    const remain = it ? Math.max(0, r36(it.required - it.delivered)) : Math.max(0, r36(o.qty - paid));
+    const paid = r37(pays.reduce((s, t4) => s + t4.qty, 0));
+    const remain = it ? Math.max(0, r37(it.required - it.delivered)) : Math.max(0, r37(o.qty - paid));
     const status = remain <= 0 ? "paid" : paid > 0 ? "partial" : "open";
     if (status === "paid" && !inRange(o) && !pays.some(inRange)) continue;
     const last = pays.at(-1);
@@ -4604,7 +5029,7 @@ function debtLedger(db, { from, to, line } = {}) {
       description: (it == null ? void 0 : it.description) || "",
       group: o.kit_group || "",
       grp: o.grp,
-      debt: r36(o.qty),
+      debt: r37(o.qty),
       paid,
       remain,
       status,
@@ -4619,7 +5044,7 @@ function debtLedger(db, { from, to, line } = {}) {
     WHERE l.kit_code = ? AND i.grp = ? AND i.model_code = ? AND i.material = ? ORDER BY l.seq`);
   for (const r of rows) {
     const ls = lotQ.all(r.kit, r.grp, r.code, r.material);
-    r.lots = ls.map((l) => ({ lotNo: l.lot_no, status: l.status, qty: r36(l.qty), at: toVN(l.created_at), signer: l.signer_name || l.signer || "", signedAt: toVN(l.signed_at) }));
+    r.lots = ls.map((l) => ({ lotNo: l.lot_no, status: l.status, qty: r37(l.qty), at: toVN(l.created_at), signer: l.signer_name || l.signer || "", signedAt: toVN(l.signed_at) }));
     r.unsigned = ls.filter((l) => l.status !== "received").length;
   }
   const ORD = { open: 0, partial: 1, paid: 2 };
@@ -4632,7 +5057,7 @@ function debtLedger(db, { from, to, line } = {}) {
     code: t4.ref_code || "",
     material: t4.material,
     group: t4.kit_group || "",
-    qty: r36(t4.qty),
+    qty: r37(t4.qty),
     by: t4.username || ""
   }, t4.type === "debt_settle" ? lotOf(t4) : {}));
   const open = rows.filter((r) => r.status !== "paid");
@@ -4646,7 +5071,7 @@ function debtLedger(db, { from, to, line } = {}) {
     kpi: {
       open: open.length,
       rear: open.filter((r) => r.group === "REAR").length,
-      remain: r36(open.reduce((s, r) => s + r.remain, 0)),
+      remain: r37(open.reduce((s, r) => s + r.remain, 0)),
       opened: events.filter((e) => e.type === "open").length,
       settled: events.filter((e) => e.type === "settle").length
     }
@@ -4736,7 +5161,7 @@ function bomRoutes(db) {
 
 // ../kitting-app/lib/bom-change.mjs
 var CHANGE_REASONS = { ECN: "Thay \u0111\u1ED5i k\u1EF9 thu\u1EADt (ECN)", VENDOR: "Thay nh\xE0 cung c\u1EA5p", EOL: "H\u1EBFt h\xE0ng / ng\u1EEBng m\xE3 c\u0169", QUALITY: "Ch\u1EA5t l\u01B0\u1EE3ng", OTHER: "Kh\xE1c" };
-var r37 = (n) => Math.round(Number(n) * 1e3) / 1e3;
+var r38 = (n) => Math.round(Number(n) * 1e3) / 1e3;
 var t3 = (v) => String(v != null ? v : "").trim();
 var MODEL2 = "COALESCE(m.model, b.model_code)";
 function ensureBomChangeSchema(db) {
@@ -4857,7 +5282,7 @@ function apply(db, ch, username) {
     for (const i of its) {
       if (i.grp === "HV" && !codes.includes(i.model_code)) continue;
       const base = ((_b = olds.find((o) => o.model_code === (i.model_code || codes[0]))) == null ? void 0 : _b.point) || ch.old_point;
-      const req = ch.new_point && base ? r37(i.required / base * ch.new_point) : i.required;
+      const req = ch.new_point && base ? r38(i.required / base * ch.new_point) : i.required;
       db.prepare("UPDATE kit_item SET material = ?, description = ?, required = ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?").run(ch.new_material, ch.new_description || i.description, req, k.id, i.grp, i.model_code, ch.old_material);
     }
     kitsUpdated.push(k.code);
@@ -5072,7 +5497,7 @@ var R = {
   "kho:2|kitpad:2": ["POST /api/kho/print", "POST /api/kho/kit", "POST /api/kho/kit/start", "POST /api/kho/bu"],
   "kho:1": ["GET /api/kho/stock", "GET /api/kho/lines", "GET /api/kho/deliver-preview", "GET /api/kho/debts", "GET /api/kho/adjust", "GET /api/kho/history", "GET /api/kho/dispatch", "GET /api/kho/material-summary"],
   "deliver": ["POST /api/kho/deliver"],
-  "kho:2": ["POST /api/kho/stock/sync", "POST /api/kho/debts/settle", "POST /api/kho/adjust", "POST /api/supply/issue", "POST /api/kho/receipt/resolve", "POST /api/kho/lot/resolve"],
+  "kho:2": ["POST /api/erp/req/sync", "POST /api/erp/req/retry", "POST /api/erp/req/drop", "POST /api/kho/stock/sync", "POST /api/kho/debts/settle", "POST /api/kho/adjust", "POST /api/supply/issue", "POST /api/kho/receipt/resolve", "POST /api/kho/lot/resolve"],
   "supply:1|prod:1": ["GET /api/supply/form", "GET /api/supply"],
   "supply:2|prod:2": ["POST /api/supply"],
   "approve": ["POST /api/supply/decide"],
@@ -5081,7 +5506,7 @@ var R = {
   // Nhận PO / trạng thái PO nội bộ: máy của Line (prod:2) thao tác, Leader giao nhận ký bằng Mã NV + MK cấp 2 (kiểm trong handler).
   "prod:1|kho:1": ["GET /api/prod/receipt", "GET /api/prod/lots"],
   "prod:2": ["POST /api/prod/receipt/receive", "POST /api/prod/receipt/reject", "POST /api/prod/internal-status", "POST /api/prod/lots/receive"],
-  "kho:1|supply:1": ["GET /api/kho/receipts"]
+  "kho:1|supply:1": ["GET /api/kho/receipts", "GET /api/erp/req"]
 };
 var ROUTE_PERM = new Map(Object.entries(R).flatMap(([need, list]) => list.map((r) => [r, need.split("|")])));
 var PIN2_ROUTES = /* @__PURE__ */ new Set(["POST /api/admin/users", "POST /api/admin/users/update", "POST /api/admin/users/delete"]);
@@ -5339,7 +5764,7 @@ function routeTable(app, db) {
     if (!r.ok && u) audit(db, name, "sign.fail", { line });
     return r;
   };
-  return [...userRoutes, ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, erpHttp), ...erpStockRoutes(db, erpHttp), ...bomChangeRoutes(db), ...receiptRoutes(db, sign)];
+  return [...userRoutes, ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, erpHttp), ...erpStockRoutes(db, erpHttp), ...erpRequestRoutes(db, erpPost), ...bomChangeRoutes(db), ...receiptRoutes(db, sign)];
 }
 function erpHttp(c) {
   return (path) => {
@@ -5350,6 +5775,68 @@ function erpHttp(c) {
       return { status: 0, json: null };
     }
   };
+}
+function erpPost(c) {
+  return (path, body) => {
+    try {
+      const r = $http.send({
+        url: c.url + path,
+        method: "POST",
+        timeout: 60,
+        body: JSON.stringify(body || {}),
+        headers: { Authorization: `token ${c.key}:${c.secret}`, Accept: "application/json", "Content-Type": "application/json" }
+      });
+      let json = null;
+      try {
+        json = r.json;
+      } catch (_) {
+        json = null;
+      }
+      return { status: r.statusCode, json };
+    } catch (x) {
+      return { status: 0, json: null };
+    }
+  };
+}
+function cronErpRequests() {
+  const src = { username: "ERP", source: "ERP t\u1EF1 \u0111\u1ED9ng 15 ph\xFAt" };
+  const prep = inTx((tx2) => {
+    const db = makeDb(tx2);
+    return { cfg: erpCfg(db), known: knownRequests(db) };
+  }).result;
+  if (!prep || !prep.cfg.reqSync || !(prep.cfg.url && prep.cfg.key && prep.cfg.secret)) return { ok: true, skipped: "Ch\u01B0a b\u1EADt \u0111\u1ED3ng b\u1ED9 phi\u1EBFu ERP" };
+  const got = pullErpRequests(null, erpPost, { cfg: prep.cfg, known: prep.known });
+  if (got.error) {
+    console.error(`[mm] ERP request sync: ${got.error}`);
+    inTx((tx2) => makeDb(tx2).prepare("INSERT INTO import_log(kind, source, summary, created_by) VALUES (?,?,?,?)").run("ERP_REQ", src.source, JSON.stringify({ ok: false, error: got.error }), "ERP"));
+    return { ok: false, error: got.error };
+  }
+  const res = inTx((tx2) => {
+    const r = applyErpRequests(makeDb(tx2), got.data, src);
+    if (r.changed) bumpEvents(tx2, "erp/req");
+    return r;
+  });
+  if (res.err) console.error(`[mm] ERP request apply: ${res.err.message || res.err}`);
+  return res.result;
+}
+function cronErpPush() {
+  var _a;
+  const cfg = inTx((tx2) => erpCfg(makeDb(tx2))).result;
+  if (!cfg || !cfg.reqSync || !(cfg.url && cfg.key && cfg.secret)) return { skipped: true };
+  const q = inTx((tx2) => queueReports(makeDb(tx2)));
+  if (q.err) console.error(`[mm] ERP report queue: ${q.err.message || q.err}`);
+  const list = inTx((tx2) => pendingReports(makeDb(tx2), 20)).result || [];
+  const post = erpPost(cfg);
+  let ok = 0, bad = 0;
+  for (const rep of list) {
+    const r = post(`/api/method/ilsungtech_erp.api.mm_sync.report_kitting`, reportBody(rep));
+    const msg = r.status >= 200 && r.status < 300 ? "" : erpMessage(r.json, r.status);
+    const m = inTx((tx2) => markReport(makeDb(tx2), rep.id, { status: r.status, json: r.json, message: msg }));
+    if (m.result) ok++;
+    else bad++;
+  }
+  if (ok || bad) inTx((tx2) => bumpEvents(tx2, "erp/report"));
+  return { queued: ((_a = q.result) == null ? void 0 : _a.queued) || 0, sent: ok, failed: bad };
 }
 function cronErpLines() {
   inTx((tx2) => {
@@ -5380,7 +5867,8 @@ function cronErpLines() {
     return r;
   });
   if (bm.err) console.error(`[mm] ERP BOM sync: ${bm.err.message || bm.err}`);
-  return { lines: result, stock: st.result, bom: bm.result };
+  const rq = cronErpRequests();
+  return { lines: result, stock: st.result, bom: bm.result, requests: rq };
 }
 function handle(app, req) {
   const db = makeDb(app);

@@ -93,7 +93,7 @@ async function readExcelFile(file, kind) {
   if (MMReaders.isXls(buf) && !window.XLSX) await loadScript('vendor/xlsx.full.min.js?v=0.20.3');
   return kind === 'prod' ? MMReaders.readProdFile(buf, file.name) : MMReaders.readPoFile(buf, file.name);
 }
-const APP_V = 'pb33';
+const APP_V = 'pb34';
 
 /* ---------- ô nhập số kitting: định mức lẻ + máy tính + − × ÷ ---------- */
 // Định mức lẻ (VD 884,16): cấp số nguyên; tối đa làm tròn lên, đủ khi ≥ phần nguyên (tối thiểu 1), nút Đủ = làm tròn gần nhất.
@@ -380,7 +380,7 @@ function cardHtml(it) {
       <div class="kmain"><div class="code"><span class="ctext">${esc(it.code)}</span>${merged ? `<span class="pill merged">${it.pos.length} PO</span>` : ''}${it.printed && !it.locked ? '<span class="pill warn" title="Kho đã in phiếu kitting: không gộp / tách được nữa">🖨 đã in</span>' : ''}</div><div class="ksub">${esc(short(it.model))} · ${codes.length > 1 ? `<b>${codes.length} code</b>` : esc(codeTail(it.modelCode))}${it.vlnStatus && it.vlnStatus !== 'pending' ? ` <span class="ktag kt-${it.vlnStatus}">V</span>` : ''}${it.hvStatus && it.hvStatus !== 'pending' ? `<span class="ktag kt-${it.hvStatus}">R</span>` : ''}</div></div>
       <div class="kqty"><div class="q">${fmt(it.planQty)}</div><div class="st"><i class="dot ${it.state}"></i>${STATE[it.state]}</div></div>
       ${editable ? '<button type="button" class="more" aria-label="Thao tác">⋮</button>' : ''}
-    </div>${startLine(it, `${(it.cancelled || []).length ? `<span class="pill bad" title="Cancel: ${esc(it.cancelled.join(', '))}">PO hủy</span>` : ''}${(it.loadTp || []).length ? ` <span class="pill load" title="Line nhận thêm hàng thành phẩm từ Kho">🏷 +${fmt(it.loadTp.reduce((a, l) => a + l.qty, 0))} TP</span>` : ''}${it.type === 'po' && it.poType === 'LOAD' ? ' <span class="pill load" title="PO Load thành phẩm: gộp vào Kit có PO thật cùng Model Code">🏷 Load TP</span>' : ''}${it.planLine && !it.fixedLine ? ` <span class="pill info" title="Line dự kiến theo file kế hoạch của Planner">→ ${esc(it.planLine)}</span>` : ''}${it.fixedLine ? `<span class="pill warn" title="PO nội bộ ${esc((it.internal || []).map(i => i.po).join(', '))} — chỉ giao ${esc(it.fixedLine)}">${(it.internal || []).some(i => i.type === 'RMA') ? 'RMA' : 'Unplan'} → ${esc(it.fixedLine)}</span>` : ''}${notePill(it.type === 'kit' ? it.notes : it.note ? [{ po: it.code, note: it.note }] : [])}`)}${detail}
+    </div>${startLine(it, `${(it.cancelled || []).length ? `<span class="pill bad" title="Cancel: ${esc(it.cancelled.join(', '))}">PO hủy</span>` : ''}${(it.loadTp || []).length ? ` <span class="pill load" title="Line nhận thêm hàng thành phẩm từ Kho">🏷 +${fmt(it.loadTp.reduce((a, l) => a + l.qty, 0))} TP</span>` : ''}${it.type === 'po' && it.poType === 'LOAD' ? ' <span class="pill load" title="PO Load thành phẩm: gộp vào Kit có PO thật cùng Model Code">🏷 Load TP</span>' : ''}${it.erp ? ` <span class="pill info" title="Kit theo phiếu ERP ${esc(it.erp)}: vật liệu theo ERP, không gộp / tách">ERP</span>` : ''}${it.planLine && !it.fixedLine ? ` <span class="pill info" title="Line dự kiến theo file kế hoạch của Planner">→ ${esc(it.planLine)}</span>` : ''}${it.fixedLine ? `<span class="pill warn" title="PO nội bộ ${esc((it.internal || []).map(i => i.po).join(', '))} — chỉ giao ${esc(it.fixedLine)}">${(it.internal || []).some(i => i.type === 'RMA') ? 'RMA' : 'Unplan'} → ${esc(it.fixedLine)}</span>` : ''}${notePill(it.type === 'kit' ? it.notes : it.note ? [{ po: it.code, note: it.note }] : [])}`)}${detail}
   </div>`;
 }
 // Plan Start → End · thời lượng; cam: bắt đầu trong 24 giờ tới, đỏ: đã quá giờ bắt đầu mà chưa lập KH.
@@ -1390,7 +1390,7 @@ $('#prodTemplate').addEventListener('click', e => withBusy(e.currentTarget, asyn
 }));
 async function loadErpCfg() {
   const c = await api('/api/admin/erp'), f = $('#erpForm');
-  f.url.value = c.url || ''; f.key.value = ''; f.secret.value = ''; f.lineSync.checked = !!c.lineSync; f.stockSync.checked = !!c.stockSync; f.bomSync.checked = !!c.bomSync;
+  f.url.value = c.url || ''; f.key.value = ''; f.secret.value = ''; f.lineSync.checked = !!c.lineSync; f.stockSync.checked = !!c.stockSync; f.bomSync.checked = !!c.bomSync; f.reqSync.checked = !!c.reqSync;
   f.modelMap.value = Object.entries(c.modelMap || {}).map(([k, v]) => `${k} = ${v}`).join('\n');
   const L = c.last;
   $('#erpInfo').innerHTML = `${c.hasKey && c.hasSecret ? 'Đã lưu khóa API' : '<span class="warn-text">Chưa có khóa API</span>'}${L ? ` · Line ${esc(localTime(L.at))}: ${L.ok ? `${fmt(L.cells)} ô` : `<span class="bad-text">${esc(L.error)}</span>`}` : ''}${c.stockOkAt ? ` · Tồn ${esc(localTime(c.stockOkAt))}` : ''}${c.bomOkAt ? ` · BOM ${esc(localTime(c.bomOkAt))}` : ''}`;
@@ -1398,7 +1398,7 @@ async function loadErpCfg() {
 $('#erpForm').addEventListener('submit', async e => {
   e.preventDefault(); const f = e.currentTarget;
   const modelMap = Object.fromEntries(f.modelMap.value.split('\n').map(l => l.split('=').map(x => x.trim())).filter(x => x.length === 2 && x[0] && x[1]));
-  await withBusy(e.submitter, async () => { const r = await api('/api/admin/erp', { json: { url: f.url.value, key: f.key.value, secret: f.secret.value, lineSync: f.lineSync.checked, stockSync: f.stockSync.checked, bomSync: f.bomSync.checked, modelMap } }); toast(r.message, 'success'); await loadErpCfg(); });
+  await withBusy(e.submitter, async () => { const r = await api('/api/admin/erp', { json: { url: f.url.value, key: f.key.value, secret: f.secret.value, lineSync: f.lineSync.checked, stockSync: f.stockSync.checked, bomSync: f.bomSync.checked, reqSync: f.reqSync.checked, modelMap } }); toast(r.message, 'success'); await loadErpCfg(); });
 });
 $('#erpTest').addEventListener('click', e => withBusy(e.currentTarget, async () => {
   try { const r = await api('/api/lines/erp/sync', { json: {} }); r.ok ? toast(`Đồng bộ ERP: ${fmt(r.cells)} ô (+${r.added} ~${r.changed} −${r.removed})`, 'success') : toast(r.error, 'error'); } finally { await loadErpCfg(); }
