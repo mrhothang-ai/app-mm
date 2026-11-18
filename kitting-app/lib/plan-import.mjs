@@ -113,7 +113,7 @@ export function planImport(db, body, username, apply = false) {
   const lines = new Set(db.prepare('SELECT name FROM lines WHERE active = 1').all().map(r => r.name));
   const poOf = db.prepare('SELECT * FROM po WHERE po_key = ?'), kitOf = db.prepare('SELECT k.* FROM kit_order_po x JOIN kit_order k ON k.id = x.kit_id WHERE x.po_key = ?');
   const kitPoKeys = id => db.prepare('SELECT po_key FROM kit_order_po WHERE kit_id = ?').all(id).map(r => r.po_key);
-  const printed = printedCodes(db), locked = k => k.vln_status !== 'pending' || k.hv_status !== 'pending' || printed.has(k.code);
+  const printed = printedCodes(db), locked = k => k.vln_status !== 'pending' || k.hv_status !== 'pending' || printed.has(k.code) || !!k.erp_req;
   const seen = new Map();   // po_key → nhóm đầu tiên (PO lặp ở nhiều nhóm: lấy nhóm đầu)
   const plan = [];
   for (const sh of parsed) {

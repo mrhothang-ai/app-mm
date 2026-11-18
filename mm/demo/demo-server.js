@@ -15,6 +15,7 @@ import { kittingRoutes } from '../../kitting-app/lib/kitting-routes.mjs';
 import { bomRoutes } from '../../kitting-app/lib/bom-routes.mjs';
 import { erpLineRoutes } from '../../kitting-app/lib/erp-line.mjs';
 import { erpStockRoutes } from '../../kitting-app/lib/erp-stock.mjs';
+import { erpRequestRoutes } from '../../kitting-app/lib/erp-request.mjs';
 import { bomChangeRoutes } from '../../kitting-app/lib/bom-change.mjs';
 import { checkPassword } from '../../kitting-app/lib/password.mjs';
 import { effectivePerms, normalizePerms, checkAccess, checkUserChange, canSeeUser, checkPin2, pin2Locked, pin2Result, requirePin2, permCatalog, ensurePermSchema, needsPin2, signCheck, ROLE_DEFAULTS } from '../../kitting-app/lib/perms.mjs';
@@ -178,7 +179,7 @@ function demoSign(username, pin, line) {
   if (!r.ok && u) audit(db, name, 'sign.fail', { line });
   return r;
 }
-const routeTable = () => table || (table = [...localRoutes(), ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, null), ...erpStockRoutes(db, null), ...bomChangeRoutes(db), ...receiptRoutes(db, demoSign)]);
+const routeTable = () => table || (table = [...localRoutes(), ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, null), ...erpStockRoutes(db, null), ...erpRequestRoutes(db, null), ...bomChangeRoutes(db), ...receiptRoutes(db, demoSign)]);
 
 function login(body) {
   const u = db.prepare('SELECT * FROM users WHERE username = ?').get(trim(body?.identity).toUpperCase());

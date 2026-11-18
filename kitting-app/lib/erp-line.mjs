@@ -19,7 +19,9 @@ export function erpCfg(db) {
   return { url: String(cfgGet(db, 'url') || '').replace(/\/+$/, ''), key: cfgGet(db, 'key'), secret: cfgGet(db, 'secret'),
     lineSync: cfgGet(db, 'line_sync') === '1', okAt: cfgGet(db, 'line_ok_at'),
     // Tồn vị trí (Bin) và BOM mặc định lấy từ ERP: mặc định bật khi đã có khóa; Quản trị tắt được.
-    stockSync: cfgGet(db, 'stock_sync') !== '0', bomSync: cfgGet(db, 'bom_sync') !== '0', stockOkAt: cfgGet(db, 'stock_ok_at'), bomOkAt: cfgGet(db, 'bom_ok_at'), modelMap: (() => { try { return JSON.parse(cfgGet(db, 'model_map') || '{}'); } catch { return {}; } })() };
+    stockSync: cfgGet(db, 'stock_sync') !== '0', bomSync: cfgGet(db, 'bom_sync') !== '0', stockOkAt: cfgGet(db, 'stock_ok_at'), bomOkAt: cfgGet(db, 'bom_ok_at'),
+    // Phiếu yêu cầu vật tư ERP → Kho kitting trên MM (erp-request.mjs): mặc định TẮT, Quản trị bật khi ERP đã sẵn sàng.
+    reqSync: cfgGet(db, 'req_sync') === '1', reqOkAt: cfgGet(db, 'req_ok_at'), modelMap: (() => { try { return JSON.parse(cfgGet(db, 'model_map') || '{}'); } catch { return {}; } })() };
 }
 // Khóa sửa tay kế hoạch Line: bật đồng bộ và đã có ít nhất 1 lần lấy ERP thành công (bot chưa có quyền thì vẫn sửa tay được).
 export const erpLineLocked = db => { const c = erpCfg(db); return c.lineSync && !!c.okAt; };
@@ -37,19 +39,20 @@ export function saveErpCfg(db, body, username) {
     if (body?.lineSync !== undefined) cfgSet(db, 'line_sync', body.lineSync ? '1' : '0');
     if (body?.stockSync !== undefined) cfgSet(db, 'stock_sync', body.stockSync ? '1' : '0');
     if (body?.bomSync !== undefined) cfgSet(db, 'bom_sync', body.bomSync ? '1' : '0');
+    if (body?.reqSync !== undefined) cfgSet(db, 'req_sync', body.reqSync ? '1' : '0');
     if (body?.modelMap !== undefined) {
       const m = {};
       for (const [k, v] of Object.entries(body.modelMap || {})) if (String(k).trim() && String(v).trim()) m[String(k).trim()] = String(v).trim();
       cfgSet(db, 'model_map', JSON.stringify(m));
     }
-    audit(db, username, 'erp.cfg', { url: body?.url !== undefined, key: !!body?.key, secret: !!body?.secret, lineSync: body?.lineSync, stockSync: body?.stockSync, bomSync: body?.bomSync, modelMap: body?.modelMap ? Object.keys(body.modelMap).length : undefined });
+    audit(db, username, 'erp.cfg', { url: body?.url !== undefined, key: !!body?.key, secret: !!body?.secret, lineSync: body?.lineSync, stockSync: body?.stockSync, bomSync: body?.bomSync, reqSync: body?.reqSync, modelMap: body?.modelMap ? Object.keys(body.modelMap).length : undefined });
     return { ok: true, message: 'Đã lưu kết nối Next ERP.' };
   });
 }
 
 export function erpLineStatus(db) {
   const c = erpCfg(db), last = db.prepare("SELECT summary, created_by, created_at FROM import_log WHERE kind = 'ERP_LINE' ORDER BY id DESC LIMIT 1").get();
-  return { configured: !!(c.url && c.key && c.secret), url: c.url, lineSync: c.lineSync, stockSync: c.stockSync, bomSync: c.bomSync, locked: erpLineLocked(db), okAt: c.okAt, stockOkAt: c.stockOkAt, bomOkAt: c.bomOkAt, modelMap: c.modelMap,
+  return { configured: !!(c.url && c.key && c.secret), url: c.url, lineSync: c.lineSync, stockSync: c.stockSync, bomSync: c.bomSync, reqSync: c.reqSync, locked: erpLineLocked(db), okAt: c.okAt, stockOkAt: c.stockOkAt, bomOkAt: c.bomOkAt, modelMap: c.modelMap,
     last: last ? { ...JSON.parse(last.summary || '{}'), by: last.created_by, at: last.created_at } : null };
 }
 

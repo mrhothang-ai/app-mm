@@ -54,9 +54,9 @@ export function undo(db, username) {
     const cur = snap.pos.length ? db.prepare(`SELECT DISTINCT k.* FROM kit_order k JOIN kit_order_po x ON x.kit_id = k.id WHERE x.po_key IN (${placeholders(snap.pos.length)})`).all(...snap.pos) : [];
     // Chỉ chặn khi chính các PO của thao tác đã được kho kitting; kit khác cùng ngày đã kitting thì giữ nguyên.
     const core = new Set(snap.core || snap.pos);
-    const started = cur.filter(k => !pending(k) && db.prepare('SELECT po_key FROM kit_order_po WHERE kit_id = ?').all(k.id).some(r => core.has(r.po_key)));
+    const started = cur.filter(k => (!pending(k) || k.erp_req) && db.prepare('SELECT po_key FROM kit_order_po WHERE kit_id = ?').all(k.id).some(r => core.has(r.po_key)));
     if (started.length) throw fail(`Kho đã bắt đầu kitting ${started.map(k => k.code).join(', ')} — không hoàn tác được.`);
-    for (const k of cur.filter(pending)) { db.prepare('DELETE FROM kit_item WHERE kit_id = ?').run(k.id); db.prepare('DELETE FROM kit_order_po WHERE kit_id = ?').run(k.id); db.prepare('DELETE FROM kit_order WHERE id = ?').run(k.id); }
+    for (const k of cur.filter(k => pending(k) && !k.erp_req)) { db.prepare('DELETE FROM kit_item WHERE kit_id = ?').run(k.id); db.prepare('DELETE FROM kit_order_po WHERE kit_id = ?').run(k.id); db.prepare('DELETE FROM kit_order WHERE id = ?').run(k.id); }
     const ins = db.prepare("INSERT INTO kit_order(id, code, kind, model_code, plan_day, seq, plan_line, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)");
     for (const k of snap.kits) {
       if (db.prepare('SELECT 1 FROM kit_order WHERE id = ? OR code = ?').get(k.id, k.code)) continue;
@@ -97,6 +97,7 @@ export function batchMove(db, { items, day, position = 'end' }, username) {
       const k = db.prepare('SELECT * FROM kit_order WHERE id = ?').get(Number(it.id));
       if (!k) throw fail('Kit PO không còn tồn tại. Tải lại.', 409);
       if (!pending(k)) throw fail(`${k.code} kho đã bắt đầu kitting, không chuyển được.`);
+      if (day === null && k.erp_req) throw fail(`${k.code} là Kit của phiếu ERP ${k.erp_req}: không đưa về PO chưa lập được.`);
       if (day === null) {
         if (k.kind === 'single') { db.prepare('DELETE FROM kit_item WHERE kit_id = ?').run(k.id); db.prepare('DELETE FROM kit_order WHERE id = ?').run(k.id); }
         else db.prepare('UPDATE kit_order SET plan_day = NULL, seq = 0 WHERE id = ?').run(k.id);

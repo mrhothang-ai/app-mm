@@ -57,7 +57,7 @@ const R = {
   'kho:2|kitpad:2': ['POST /api/kho/print', 'POST /api/kho/kit', 'POST /api/kho/kit/start', 'POST /api/kho/bu'],
   'kho:1': ['GET /api/kho/stock', 'GET /api/kho/lines', 'GET /api/kho/deliver-preview', 'GET /api/kho/debts', 'GET /api/kho/adjust', 'GET /api/kho/history', 'GET /api/kho/dispatch', 'GET /api/kho/material-summary'],
   'deliver': ['POST /api/kho/deliver'],
-  'kho:2': ['POST /api/kho/stock/sync', 'POST /api/kho/debts/settle', 'POST /api/kho/adjust', 'POST /api/supply/issue', 'POST /api/kho/receipt/resolve', 'POST /api/kho/lot/resolve'],
+  'kho:2': ['POST /api/erp/req/sync', 'POST /api/erp/req/retry', 'POST /api/erp/req/drop', 'POST /api/kho/stock/sync', 'POST /api/kho/debts/settle', 'POST /api/kho/adjust', 'POST /api/supply/issue', 'POST /api/kho/receipt/resolve', 'POST /api/kho/lot/resolve'],
   'supply:1|prod:1': ['GET /api/supply/form', 'GET /api/supply'],
   'supply:2|prod:2': ['POST /api/supply'],
   'approve': ['POST /api/supply/decide'],
@@ -66,7 +66,7 @@ const R = {
   // Nhận PO / trạng thái PO nội bộ: máy của Line (prod:2) thao tác, Leader giao nhận ký bằng Mã NV + MK cấp 2 (kiểm trong handler).
   'prod:1|kho:1': ['GET /api/prod/receipt', 'GET /api/prod/lots'],
   'prod:2': ['POST /api/prod/receipt/receive', 'POST /api/prod/receipt/reject', 'POST /api/prod/internal-status', 'POST /api/prod/lots/receive'],
-  'kho:1|supply:1': ['GET /api/kho/receipts']
+  'kho:1|supply:1': ['GET /api/kho/receipts', 'GET /api/erp/req']
 };
 const ROUTE_PERM = new Map(Object.entries(R).flatMap(([need, list]) => list.map(r => [r, need.split('|')])));
 // Thao tác cần mật khẩu cấp 2 (đã xác nhận trong 5 phút).
