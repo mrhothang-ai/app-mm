@@ -21,6 +21,7 @@ async function loadKho() {
   if (khoTab === 'debts') return loadDebts();
   if (khoTab === 'materials') return loadMatSum();
   if (khoTab === 'stock') return loadStock();
+  if (khoTab === 'erp') return loadErpReq();
   return loadHistory();
 }
 
@@ -40,7 +41,7 @@ async function loadQueue(grp) {
     lastGroup = g;
     return `${head}<div class="qrow" data-id="${r.id}">
       <span class="rank mrank ${r.shortModel ? 'short' : ''} ${r.behind ? 'behind' : ''}" title="${r.behind ? 'XẾP MUỘN so với Plan Start · ' : ''}Kho làm thứ ${r.rank || '–'}${r.shortModel ? ' · Model đang thiếu tồn VLN' : ''}">${esc(short(r.model))}·${r.mrank || ''}</span>
-      <div class="kmain"><div class="code">${esc(r.code)}${r.kind === 'merged' ? ` <span class="pill merged">${r.pos.length} PO</span>` : ''}${(r.cancelled || []).length ? ` <span class="pill bad" title="Cancel: ${esc(r.cancelled.join(', '))}">PO hủy</span>` : ''}${(r.loadTp || []).length ? ` <span class="pill load" title="Line nhận thêm hàng thành phẩm từ Kho">🏷 +${fmt(r.loadTp.reduce((a, l) => a + l.qty, 0))} TP</span>` : ''}${r.fixedLine ? ` <span class="pill warn" title="PO nội bộ ${esc((r.internal || []).map(i => i.po).join(', '))} — chỉ giao ${esc(r.fixedLine)}">→ ${esc(r.fixedLine)}</span>` : ''}${r.planLine && !r.fixedLine ? ` <span class="pill info" title="Line dự kiến theo file kế hoạch của Planner">→ ${esc(r.planLine)}</span>` : ''}${notePill(r.notes)}</div><div class="ksub">${esc(short(r.model))} · ${(r.codes || []).length > 1 ? `${r.codes.length} code` : esc(codeTail(r.modelCode))} · ${fmt(r.qty)} ea</div>${poLine(r.pos)}</div>
+      <div class="kmain"><div class="code">${esc(r.code)}${r.erp ? ` <span class="pill info" title="Kit theo phiếu ERP: vật liệu theo ERP">ERP</span>` : ''}${r.kind === 'merged' ? ` <span class="pill merged">${r.pos.length} PO</span>` : ''}${(r.cancelled || []).length ? ` <span class="pill bad" title="Cancel: ${esc(r.cancelled.join(', '))}">PO hủy</span>` : ''}${(r.loadTp || []).length ? ` <span class="pill load" title="Line nhận thêm hàng thành phẩm từ Kho">🏷 +${fmt(r.loadTp.reduce((a, l) => a + l.qty, 0))} TP</span>` : ''}${r.fixedLine ? ` <span class="pill warn" title="PO nội bộ ${esc((r.internal || []).map(i => i.po).join(', '))} — chỉ giao ${esc(r.fixedLine)}">→ ${esc(r.fixedLine)}</span>` : ''}${r.planLine && !r.fixedLine ? ` <span class="pill info" title="Line dự kiến theo file kế hoạch của Planner">→ ${esc(r.planLine)}</span>` : ''}${notePill(r.notes)}</div><div class="ksub">${esc(short(r.model))} · ${(r.codes || []).length > 1 ? `${r.codes.length} code` : esc(codeTail(r.modelCode))} · ${fmt(r.qty)} ea</div>${poLine(r.pos)}</div>
       <div class="qprog">${p ? `<b>${p.full}</b>/${p.total} mã ${miniBar(p.full, p.total)}` : '<span class="muted">–</span>'}${r.rearZero ? '<span class="warn-text">Chưa có Rear</span>' : (r.rearZeroCodes || []).length ? `<span class="warn-text">${r.rearZeroCodes.map(codeTail).join(', ')} chưa có Rear</span>` : ''}${r.noBom ? '<span class="bad-text">Chưa có BOM</span>' : ''}</div>
       ${qStatus(r)}${typeof startBtn === 'function' ? startBtn(r, grp) : ''}
       ${canKho() && r.status !== 'pending' ? '<button type="button" class="more adj" aria-label="Điều chỉnh kit">⋮</button>' : ''}
@@ -411,7 +412,7 @@ async function khoResolve(kitId) {
 }
 
 /* =================== CẤP VẬT LIỆU =================== */
-const RSTATUS = { pending_approval: 'Chờ duyệt', approved: 'Chờ cấp', issued: 'Đã cấp', rejected: 'Từ chối' };
+const RSTATUS = { pending_approval: 'Chờ duyệt', approved: 'Chờ cấp', issued: 'Đã cấp', rejected: 'Từ chối', cancelled: 'Đã hủy' };
 async function loadSupply() {
   supplyData = await api('/api/supply');
   const k = supplyData.kpi, on = f => supplyFilter === f ? 'active' : '';
@@ -422,7 +423,7 @@ async function loadSupply() {
   $('#supplyList').innerHTML = rows.map(r => `<div class="req-card st-${r.status}" data-id="${r.id}">
     <div class="rq-top"><span><b>${esc(r.line)}</b> · ${esc(short(r.model))}</span><span class="rst rst-${r.status}">${RSTATUS[r.status]}</span></div>
     <div class="rq-mid"><span>${r.kind === 'po' ? '<span class="pill info">PO</span> ' : ''}<b>${esc(r.kind === 'po' ? (r.kit_code || r.material) : r.material)}</b><span class="sub-cell">${esc(r.kind === 'po' ? (r.status === 'issued' ? `Đã giao ${r.kit_code || ''}` : 'Xin cấp PO tiếp theo') : r.description || '')}</span></span><span class="big-num">${fmt(r.issued_qty ?? r.qty)}${r.kind === 'po' ? '<small> ea</small>' : ''}</span></div>
-    <div class="rq-rule ${r.pass ? 'ok' : 'bad'}"><b>${fmt(Math.round(r.available))}</b> ${r.pass ? '&lt;' : '≥'} ${fmt(r.threshold)} <span class="muted">· ${r.pass ? 'Đạt' : 'Ngoại lệ'} · Remain ${fmt(r.remain_sum)} − rải ${fmt(r.spread)} − pending ${fmt(r.pending)}</span></div>
+    ${r.erp_req ? `<div class="rq-rule ok"><span class="pill info">ERP</span> <b>${esc(r.erp_req)}</b> <span class="muted">· đã duyệt trên ERP</span></div>` : `<div class="rq-rule ${r.pass ? 'ok' : 'bad'}"><b>${fmt(Math.round(r.available))}</b> ${r.pass ? '&lt;' : '≥'} ${fmt(r.threshold)} <span class="muted">· ${r.pass ? 'Đạt' : 'Ngoại lệ'} · Remain ${fmt(r.remain_sum)} − rải ${fmt(r.spread)} − pending ${fmt(r.pending)}</span></div>`}
     <div class="rq-foot"><span class="muted">#${r.id} · ${esc(r.requested_by)} · ${esc(localTime(r.created_at))}${r.approved_by && r.approved_by !== 'Tự động' ? ` · duyệt: ${esc(r.approved_by)}` : ''}${r.approve_note ? ` · ${esc(r.approve_note)}` : ''}${r.note ? ` · ${esc(r.note)}` : ''}</span>
       <span class="btn-row">${r.status === 'pending_approval' && canApprove() ? '<button type="button" class="secondary rq-reject">Từ chối</button><button type="button" class="primary rq-approve">Duyệt</button>' : ''}${r.status === 'approved' && canKho() ? `<button type="button" class="primary rq-issue">${r.kind === 'po' ? 'Giao PO' : 'Cấp'}</button>` : ''}</span></div>
   </div>`).join('') || '<div class="card"><p class="empty">Không có yêu cầu</p></div>';
@@ -591,4 +592,55 @@ $('#khoBody').addEventListener('click', e => {
   if (khoTab !== 'stock') return;
   const v = e.target.closest('#stkView [data-v]'); if (v) { STK.view = v.dataset.v; STK.flag = ''; return loadStock().catch(err => toast(err.message, 'error')); }
   const b = e.target.closest('#stkSync'); if (b) withBusy(b, async () => { try { const r = await api('/api/kho/stock/sync', { json: {} }); r.ok ? toast(`Tồn ERP: ${fmt(r.bins)} dòng · ${fmt(r.bomMatsWithStock)}/${fmt(r.bomMats)} mã BOM có tồn`, 'success') : toast(r.error, 'error'); } finally { await loadStock(); } });
+});
+
+/* =================== PHIẾU ERP (erp-request.mjs) =================== */
+// Phiếu yêu cầu vật tư từ Next ERP: vật liệu rời → tab Cấp vật liệu; Kế hoạch → Kit mã = số phiếu ERP. Phần Kho soạn trên MM
+// được báo về ERP (hàng chờ 2 phút / lần); ERP từ chối → Kho xử lý trên ERP rồi Gửi lại, hoặc Bỏ qua kèm lý do.
+const ER_KIND = { material: 'Vật liệu rời', plan: 'Kế hoạch' };
+const ER_RST = { pending: ['Chờ gửi', 'warn'], ok: ['Đã ghi ERP', 'ok'], error: ['ERP từ chối', 'bad'], dropped: ['Bỏ qua', 'muted'] };
+const erKit = s => s ? `${KSTATUS[s.vln] || s.vln} · ${KSTATUS[s.hv] || s.hv}${s.line ? ` · ${s.line}` : ''}` : '';
+async function loadErpReq() {
+  const d = await api('/api/erp/req'), k = d.kpi, L = d.last;
+  const n = $('#khoErpN'); if (n) { n.hidden = !k.error; n.textContent = k.error || ''; }
+  $('#khoKpis').innerHTML = kpi('Phiếu đang kitting', fmt(k.open)) + kpi('Chờ gửi ERP', fmt(k.pending), { tone: k.pending ? 'warn' : '' }) +
+    kpi('ERP từ chối', fmt(k.error), { tone: k.error ? 'bad' : 'ok' }) + kpi('Cần xem', fmt(k.warn), { tone: k.warn ? 'bad' : '' });
+  const info = !d.configured ? 'Chưa cấu hình kết nối ERP' : !d.reqSync ? 'Đang tắt — Quản trị bật ở Kết nối Next ERP'
+    : L ? (L.ok ? `${esc(localTime(L.at))} · ${fmt(L.requests)} phiếu${L.newKits ? ` · +${L.newKits} Kit` : ''}${L.newRows ? ` · +${L.newRows} yêu cầu` : ''}` : `<span class="bad-text">${esc(L.error)}</span>`) : 'Chưa đồng bộ';
+  const reps = d.reports.map(r => {
+    const [t, tone] = ER_RST[r.status] || [r.status, 'muted'], sum = r.rows.reduce((a, x) => a + x.qty, 0);
+    return `<tr data-rep="${r.id}"><td><b>${esc(r.request)}</b><div class="sub-cell">${esc(localTime(r.createdAt))}${r.staff ? ` · ${esc(r.staff)}` : ''}</div></td>
+      <td title="${esc(r.rows.map(x => `${x.item_code}: ${fmt(x.qty)}`).join('\n'))}">${fmt(r.rows.length)} mã · ${fmt(sum)}</td>
+      <td><span class="pill ${tone}">${t}</span>${r.stockEntries.length ? `<div class="sub-cell">${esc(r.stockEntries.join(', '))}</div>` : ''}${r.error ? `<div class="${r.status === 'error' ? 'bad-text' : 'muted'} small">${esc(r.error)}</div>` : ''}</td>
+      <td>${r.status === 'error' && canKho() ? '<span class="btn-row"><button type="button" class="secondary er-retry">Gửi lại</button><button type="button" class="danger-outline er-drop">Bỏ qua</button></span>' : ''}</td></tr>`;
+  }).join('');
+  const reqs = d.requests.map(r => `<tr><td><b>${esc(r.name)}</b><div class="sub-cell">${ER_KIND[r.kind] || esc(r.kind)}${r.planDate ? ` · ${esc(dmy(r.planDate))}` : ''}</div></td>
+      <td>${esc(r.line || '–')}<div class="sub-cell">${esc(short(r.model || ''))}</div></td>
+      <td>${r.kit ? `<b>${esc(r.kit)}</b><div class="sub-cell">${esc(erKit(r.kitStatus))}</div>` : r.kind === 'material' ? '<span class="muted">Tab Cấp vật liệu</span>' : '–'}</td>
+      <td><span class="pill ${['open', 'hold'].includes(r.state) ? 'info' : 'muted'}">${esc(r.stateLabel)}</span>${r.blocked ? `<div class="bad-text small">${esc(r.blocked)}</div>` : ''}${r.conflict ? `<div class="bad-text small">${esc(r.conflict)}</div>` : ''}${r.warn ? `<div class="warn-text small">${esc(r.warn)}</div>` : ''}</td></tr>`).join('');
+  $('#khoBody').innerHTML = `<div class="card"><div class="erp-bar"><span class="erp-tag ${d.reqSync ? 'on' : ''}">ERP</span><span class="erp-info">${info}</span>${canKho() && d.configured && d.reqSync ? '<button type="button" class="secondary" id="erSync">⟳ Đồng bộ ngay</button>' : ''}</div>
+    <h2>Báo kết quả về ERP</h2>
+    <div class="table-scroll"><table class="grid small"><thead><tr><th>Phiếu</th><th>Đã soạn</th><th>Kết quả</th><th></th></tr></thead><tbody>${reps || '<tr><td colspan="4" class="empty">Không có</td></tr>'}</tbody></table></div>
+    <h2>Phiếu từ ERP</h2>
+    <div class="table-scroll tall"><table class="grid small" id="khoList"><thead><tr><th>Phiếu</th><th>Line</th><th>Kit</th><th>Trạng thái</th></tr></thead><tbody>${reqs || '<tr><td colspan="4" class="empty">Không có</td></tr>'}</tbody></table></div></div>`;
+  const qs = $('#khoSearch').value; if (qs) $('#khoSearch').dispatchEvent(new Event('input'));
+}
+$('#khoBody').addEventListener('click', e => {
+  if (khoTab !== 'erp') return;
+  const s = e.target.closest('#erSync');
+  if (s) return withBusy(s, async () => {
+    const r = await api('/api/erp/req/sync', { json: {} });
+    r.ok ? toast(`Phiếu ERP: ${fmt(r.requests)} phiếu${r.newKits ? ` · +${r.newKits} Kit` : ''}${r.newRows ? ` · +${r.newRows} yêu cầu` : ''}${r.conflicts?.length ? ` · ${r.conflicts.length} xung đột PO` : ''}`, r.conflicts?.length ? 'error' : 'success') : toast(r.error, 'error');
+    await loadErpReq();
+  });
+  const row = e.target.closest('tr[data-rep]'); if (!row) return;
+  const id = Number(row.dataset.rep);
+  const rt = e.target.closest('.er-retry');
+  if (rt) return withBusy(rt, async () => { const r = await api('/api/erp/req/retry', { json: { id } }); toast(r.message, 'success'); await loadErpReq(); });
+  const dp = e.target.closest('.er-drop');
+  if (dp) {
+    const note = (window.prompt('Lý do bỏ qua (VD: Kho đã xử lý trực tiếp trên ERP):') || '').trim();
+    if (!note) return;
+    return withBusy(dp, async () => { const r = await api('/api/erp/req/drop', { json: { id, note } }); toast(r.message, 'success'); await loadErpReq(); });
+  }
 });

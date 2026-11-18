@@ -77,7 +77,7 @@ export function autoPlan(db, input) {
   if (o.attach) {
     const printed = printedCodes(db);   // Kit Kho đã in phiếu: không ghép thêm
     const hosts = [...rows.map(r => ({ row: r, model: r.model, qty: r.qty, start: r.start, lines: [...r.lines], code: r.code, day: r.day })),
-      ...db.prepare('SELECT * FROM kit_order WHERE plan_day IS NOT NULL').all().filter(k => pending(k) && !printed.has(k.code)).map(kitInfo).filter(k => !k.cancelled)
+      ...db.prepare('SELECT * FROM kit_order WHERE plan_day IS NOT NULL').all().filter(k => pending(k) && !printed.has(k.code) && !k.erp_req).map(kitInfo).filter(k => !k.cancelled)
         .map(k => ({ kit: k, model: k.model, qty: k.qty, start: k.start, lines: [...k.lines], code: k.code, day: k.plan_day }))];
     const internals = pool.filter(p => p.type !== 'SAP' && okModel(p.model)).sort((a, b) => a.start.localeCompare(b.start) || a.po.localeCompare(b.po));
     const ts = s => s ? Date.parse(`${s.slice(0, 10)}T${s.slice(11, 16) || '00:00'}:00Z`) : 0;

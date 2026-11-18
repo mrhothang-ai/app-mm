@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#174ea6">
   <title>Quản lý Kitting vật liệu</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=pb33">
+  <link rel="stylesheet" href="app.css?v=pb34">
 </head>
 <body>
   <main id="loginView" class="login-page" hidden>
@@ -95,7 +95,7 @@
       <div class="content">
         <div class="page-head flat"><h1>Kho</h1>
           <div class="seg" id="khoTabs" role="tablist">
-            <button type="button" data-k="dispatch" class="active">Điều phối</button><button type="button" data-k="VLN">VLN</button><button type="button" data-k="HV">Rear + VLĐT</button><button type="button" data-k="lines">Giao line</button><button type="button" data-k="debts">Nợ</button><button type="button" data-k="materials">Tổng hợp VL</button><button type="button" data-k="stock">Tồn ERP</button><button type="button" data-k="history">Lịch sử</button>
+            <button type="button" data-k="dispatch" class="active">Điều phối</button><button type="button" data-k="VLN">VLN</button><button type="button" data-k="HV">Rear + VLĐT</button><button type="button" data-k="lines">Giao line</button><button type="button" data-k="debts">Nợ</button><button type="button" data-k="materials">Tổng hợp VL</button><button type="button" data-k="stock">Tồn ERP</button><button type="button" data-k="erp">Phiếu ERP <i class="badge bad" id="khoErpN" hidden></i></button><button type="button" data-k="history">Lịch sử</button>
           </div>
         </div>
         <div class="ecn-alert" data-ecn hidden></div>
@@ -330,6 +330,7 @@
               <label class="check"><input type="checkbox" name="lineSync"> Kế hoạch Line lấy từ ERP (Line Production Plan, 15 phút / lần)</label>
               <label class="check"><input type="checkbox" name="stockSync"> Tồn kho theo vị trí lấy từ ERP (Bin, 15 phút / lần) — tab Kho → Tồn ERP, vị trí trên phiếu kitting</label>
               <label class="check"><input type="checkbox" name="bomSync"> BOM lấy từ ERP (BOM mặc định, 15 phút / lần) — khóa nhập BOM từ file / sửa dòng / ECN trong MM</label>
+              <label class="check"><input type="checkbox" name="reqSync"> Phiếu yêu cầu vật tư từ ERP (Unplan vật liệu rời + Kế hoạch, 15 phút / lần) — Kho kitting trên MM, kết quả soạn báo về ERP 2 phút / lần</label>
               <label>Ghép tên Model ERP → MM <small class="muted">(mỗi dòng: Tên ERP = Tên MM; mặc định tự bỏ đuôi " AUTO")</small><textarea name="modelMap" rows="3" placeholder="P61* = P615"></textarea></label>
               <p id="erpInfo" class="hint small-note"></p>
               <div class="btn-row"><button class="primary">Lưu kết nối</button><button type="button" id="erpTest" class="secondary">⟳ Đồng bộ thử</button></div>
@@ -368,10 +369,10 @@
   <div id="dialog" class="dialog-backdrop" hidden><form class="dialog" id="dialogForm"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><div class="btn-row end"><button type="button" class="secondary" id="dialogCancel">Hủy</button><button class="primary" id="dialogOk">Đồng ý</button></div></form></div>
   <script src="vendor/Sortable.min.js"></script>
   <script src="vendor/qrcode.min.js"></script>
-  <script src="app.js?v=pb33"></script>
-  <script src="kho.js?v=pb33"></script>
-  <script src="report.js?v=pb33"></script>
-  <script src="prod.js?v=pb33"></script>
-  <script src="kitpad.js?v=pb33"></script>
+  <script src="app.js?v=pb34"></script>
+  <script src="kho.js?v=pb34"></script>
+  <script src="report.js?v=pb34"></script>
+  <script src="prod.js?v=pb34"></script>
+  <script src="kitpad.js?v=pb34"></script>
 </body>
 </html>

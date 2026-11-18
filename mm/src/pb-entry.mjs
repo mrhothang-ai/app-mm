@@ -9,6 +9,8 @@ import { syncPoRows, updateProduction, syncMesPlan, settleLoads } from '../../ki
 import * as planning from '../../kitting-app/lib/planning.mjs';
 import { erpLineRoutes, syncErpLines } from '../../kitting-app/lib/erp-line.mjs';
 import { erpStockRoutes, syncErpStock, syncErpBom } from '../../kitting-app/lib/erp-stock.mjs';
+import { erpRequestRoutes, pullErpRequests, applyErpRequests, knownRequests, queueReports, pendingReports, reportBody, markReport, erpMessage } from '../../kitting-app/lib/erp-request.mjs';
+import { erpCfg } from '../../kitting-app/lib/erp-line.mjs';
 import { bomChangeRoutes, applyDueChanges } from '../../kitting-app/lib/bom-change.mjs';
 import { checkPassword } from '../../kitting-app/lib/password.mjs';
 import { effectivePerms, normalizePerms, checkAccess, checkUserChange, canSeeUser, checkPin2, pin2Locked, pin2Result, requirePin2, permCatalog, needsPin2, signCheck } from '../../kitting-app/lib/perms.mjs';
@@ -129,7 +131,7 @@ function routeTable(app, db) {
     if (!r.ok && u) audit(db, name, 'sign.fail', { line });
     return r;
   };
-  return [...userRoutes, ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, erpHttp), ...erpStockRoutes(db, erpHttp), ...bomChangeRoutes(db), ...receiptRoutes(db, sign)];
+  return [...userRoutes, ...coreRoutes(db), ...planRoutes(db), ...kittingRoutes(db), ...bomRoutes(db), ...erpLineRoutes(db, erpHttp), ...erpStockRoutes(db, erpHttp), ...erpRequestRoutes(db, erpPost), ...bomChangeRoutes(db), ...receiptRoutes(db, sign)];
 }
 
 // Gọi Next ERP (CHỈ GET) bằng khóa bot trong bảng erp_cfg; lỗi mạng → status 0.
@@ -140,6 +142,46 @@ function erpHttp(c) {
       return { status: r.statusCode, json: r.statusCode >= 200 && r.statusCode < 300 ? r.json : null };
     } catch (x) { return { status: 0, json: null }; }
   };
+}
+// Gọi Next ERP bằng POST + JSON (API đồng bộ phiếu `ilsungtech_erp.api.mm_sync.*`); lỗi mạng → status 0.
+function erpPost(c) {
+  return (path, body) => {
+    try {
+      const r = $http.send({ url: c.url + path, method: 'POST', timeout: 60, body: JSON.stringify(body || {}),
+        headers: { Authorization: `token ${c.key}:${c.secret}`, Accept: 'application/json', 'Content-Type': 'application/json' } });
+      let json = null; try { json = r.json; } catch (_) { json = null; }
+      return { status: r.statusCode, json };
+    } catch (x) { return { status: 0, json: null }; }
+  };
+}
+// Phiếu yêu cầu vật tư ERP (erp-request.mjs): gọi ERP NGOÀI transaction (không giữ khóa ghi SQLite lúc chờ mạng), ghi trong transaction.
+function cronErpRequests() {
+  const src = { username: 'ERP', source: 'ERP tự động 15 phút' };
+  const prep = inTx(tx => { const db = makeDb(tx); return { cfg: erpCfg(db), known: knownRequests(db) }; }).result;
+  if (!prep || !prep.cfg.reqSync || !(prep.cfg.url && prep.cfg.key && prep.cfg.secret)) return { ok: true, skipped: 'Chưa bật đồng bộ phiếu ERP' };
+  const got = pullErpRequests(null, erpPost, { cfg: prep.cfg, known: prep.known });
+  if (got.error) { console.error(`[mm] ERP request sync: ${got.error}`); inTx(tx => makeDb(tx).prepare('INSERT INTO import_log(kind, source, summary, created_by) VALUES (?,?,?,?)').run('ERP_REQ', src.source, JSON.stringify({ ok: false, error: got.error }), 'ERP')); return { ok: false, error: got.error }; }
+  const res = inTx(tx => { const r = applyErpRequests(makeDb(tx), got.data, src); if (r.changed) bumpEvents(tx, 'erp/req'); return r; });
+  if (res.err) console.error(`[mm] ERP request apply: ${res.err.message || res.err}`);
+  return res.result;
+}
+// Lịch 2 phút: phần Kho soạn thêm trên MM → hàng chờ → gửi ERP `report_kitting` (mỗi dòng 1 lần gọi, ngoài transaction).
+export function cronErpPush() {
+  const cfg = inTx(tx => erpCfg(makeDb(tx))).result;
+  if (!cfg || !cfg.reqSync || !(cfg.url && cfg.key && cfg.secret)) return { skipped: true };
+  const q = inTx(tx => queueReports(makeDb(tx)));
+  if (q.err) console.error(`[mm] ERP report queue: ${q.err.message || q.err}`);
+  const list = inTx(tx => pendingReports(makeDb(tx), 20)).result || [];
+  const post = erpPost(cfg);
+  let ok = 0, bad = 0;
+  for (const rep of list) {
+    const r = post(`/api/method/ilsungtech_erp.api.mm_sync.report_kitting`, reportBody(rep));
+    const msg = r.status >= 200 && r.status < 300 ? '' : erpMessage(r.json, r.status);
+    const m = inTx(tx => markReport(makeDb(tx), rep.id, { status: r.status, json: r.json, message: msg }));
+    if (m.result) ok++; else bad++;
+  }
+  if (ok || bad) inTx(tx => bumpEvents(tx, 'erp/report'));
+  return { queued: q.result?.queued || 0, sent: ok, failed: bad };
 }
 // Lịch 15 phút (pb_hooks/mm.pb.js): đồng bộ kế hoạch Line, tồn vị trí, BOM mặc định từ ERP; có thay đổi thì báo các màn hình tải lại.
 export function cronErpLines() {
@@ -153,7 +195,8 @@ export function cronErpLines() {
   if (st.err) console.error(`[mm] ERP stock sync: ${st.err.message || st.err}`);
   const bm = inTx(tx => { const r = syncErpBom(makeDb(tx), erpHttp, src); if (r.ok && r.applied) bumpEvents(tx, 'bom/erp'); return r; });
   if (bm.err) console.error(`[mm] ERP BOM sync: ${bm.err.message || bm.err}`);
-  return { lines: result, stock: st.result, bom: bm.result };
+  const rq = cronErpRequests();
+  return { lines: result, stock: st.result, bom: bm.result, requests: rq };
 }
 // req: { method, path ('/api/...'), query: {get(k)}, body, user }
 export function handle(app, req) {

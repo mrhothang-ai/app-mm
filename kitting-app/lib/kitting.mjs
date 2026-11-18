@@ -5,6 +5,7 @@ import { todayKey, currentShift, shifts, vnDay, kitQueueOrder, pendingOf, assert
 import { ensureBomSchema, vlnBom } from './bom.mjs';
 import { stockOf, stockStatus } from './erp-stock.mjs';
 import { createLot, ensureLotSchema, lotStats, lotCount, lotKey, SHORT_REASONS } from './kit-lot.mjs';
+import { assertErpOpen, assertNotErpKit } from './erp-request.mjs';
 export { SHORT_REASONS };
 
 export const REASONS = { PO_CANCEL: 'PO hủy / hoãn', URGENT: 'PO gấp cần vật liệu', DEFECT: 'Vật liệu lỗi', MODEL_CHANGE: 'Đổi Model / BOM', OTHER: 'Khác' };
@@ -68,6 +69,7 @@ export function kitHeader(db, kit, ro) {
     qty: pos.reduce((s, p) => s + p.plan_qty, 0), remain: pos.reduce((s, p) => s + p.remain_qty, 0),
     state: states.size === 1 ? [...states][0] : (states.has('running') || states.has('done') ? 'running' : 'waiting'),
     pos: pos.map(p => ({ po: p.po_no, modelCode: p.model_code, qty: p.plan_qty, remain: p.remain_qty, state: productionState(p) })),
+    erp: kit.erp_req || '',   // Kit sinh từ phiếu Kế hoạch ERP (erp-request.mjs): vật liệu theo danh sách ERP
     cancelled: pos.filter(isCancelled).map(p => p.po_no),
     fixedLine: fixedLineOf(pos), planLine: kit.plan_line || '', internal: internalOf(pos),
     notes: pos.filter(p => p.note).map(p => ({ po: p.po_no, note: p.note })),
@@ -107,6 +109,7 @@ function bomLines(db, pos, modelCode, grp, soft = false) {
   return { missing, lines };
 }
 export function ensureItems(db, kit, grp) {
+  if (kit.erp_req) return;   // Kit phiếu ERP: danh sách mã do ERP gửi (syncKitItems), không bung BOM MM
   const pos = kitPos(db, kit.id), ins = db.prepare('INSERT INTO kit_item(kit_id, grp, kit_group, model_code, material, description, required) VALUES (?,?,?,?,?,?,?)');
   const exist = items(db, kit.id, grp);
   if (exist.length) {
@@ -135,8 +138,8 @@ export function materialSummary(db, { to, unplanned = false } = {}) {
     const qtyOf = new Map(); for (const p of live) qtyOf.set(p.model_code, (qtyOf.get(p.model_code) || 0) + p.plan_qty);
     const total = [...qtyOf.values()].reduce((a, b) => a + b, 0);
     let list = src.kitId ? items(db, src.kitId, grp).map(i => ({ ...i })) : [];
-    if (grp === 'HV' && live.some(isUnplan) && list.every(i => i.kitted <= 0)) list = [];   // dựng theo quy định Unplan không Rear
-    if (!list.length) {
+    if (!src.erp && grp === 'HV' && live.some(isUnplan) && list.every(i => i.kitted <= 0)) list = [];   // dựng theo quy định Unplan không Rear
+    if (!list.length && !src.erp) {
       const b = bomLines(db, live, modelCode, grp, true);
       if (b.missing.length) noBom.push({ code: src.code, grp, missing: b.missing });
       list = b.lines.map(l => ({ ...l, kitted: 0 }));
@@ -149,7 +152,7 @@ export function materialSummary(db, { to, unplanned = false } = {}) {
   };
   const kits = db.prepare(`SELECT * FROM kit_order WHERE ${unplanned ? '(plan_day IS NULL OR plan_day <= ?)' : 'plan_day IS NOT NULL AND plan_day <= ?'} AND NOT (vln_status = 'delivered' AND hv_status = 'delivered') ORDER BY plan_day, seq, id`).all(to);
   for (const k of kits) {
-    const pos = kitPos(db, k.id), src = { kitId: k.id, day: k.plan_day || '', mrank: rk.get(k.id)?.mrank ?? null, code: k.code, model: modelOf(db, k.model_code, pos[0]?.basic_model) };
+    const pos = kitPos(db, k.id), src = { kitId: k.id, erp: !!k.erp_req, day: k.plan_day || '', mrank: rk.get(k.id)?.mrank ?? null, code: k.code, model: modelOf(db, k.model_code, pos[0]?.basic_model) };
     add(src, pos, k.model_code, 'VLN', k.vln_status);
     add(src, pos, k.model_code, 'HV', k.hv_status);
   }
@@ -220,7 +223,7 @@ export function kitQueue(db, grp) {
     return { ...h, status: k[statusCol(grp)], progress: list.length ? progress(list) : null,
       rearZero: grp === 'HV' && list.length > 0 && rz.length === new Set(list.filter(i => i.kit_group === 'REAR').map(i => i.model_code)).size && rz.length > 0,
       rearZeroCodes: grp === 'HV' ? rz : [],
-      noBom: !list.length && h.codes.some(c => !db.prepare('SELECT 1 FROM bom WHERE model_code = ? LIMIT 1').get(c)) };
+      noBom: !k.erp_req && !list.length && h.codes.some(c => !db.prepare('SELECT 1 FROM bom WHERE model_code = ? LIMIT 1').get(c)) };
   });
   rows.sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9));
   const c = s => rows.filter(r => r.status === s).length;
@@ -270,6 +273,7 @@ export function saveKitting(db, { kitId, grp, items: input, confirm, shortReason
     const kit = loadKit(db, kitId);
     if (kit[statusCol(grp)] === 'delivered') throw fail('PO đã giao line, không sửa kitting được. Dùng Điều chỉnh kit.');
     if (grp === 'HV' && kit.vln_status === 'pending') throw fail('PO chưa bắt đầu kitting VLN.');
+    assertErpOpen(db, kit.erp_req);
     ensureItems(db, kit, grp);
     const cur = new Map(items(db, kit.id, grp).map(i => [ikey(i.model_code, i.material), i]));
     const upd = db.prepare('UPDATE kit_item SET kitted = ? WHERE kit_id = ? AND grp = ? AND model_code = ? AND material = ?');
@@ -557,6 +561,7 @@ export function issueRequest(db, { id, qty }, user) {
   if (!r) throw fail('Không tìm thấy yêu cầu.', 404);
   if (r.status !== 'approved') throw fail('Yêu cầu chưa được duyệt.');
   if (r.kind === 'po') throw fail('Yêu cầu PO: giao ở tab Kho → Giao line.');
+  assertErpOpen(db, r.erp_req);
   const q = Number(qty ?? r.qty); if (!Number.isFinite(q) || q <= 0) throw fail('Số cấp phải > 0.');
   db.prepare("UPDATE material_request SET status = 'issued', issued_qty = ?, issued_by = ?, issued_at = datetime('now') WHERE id = ?").run(q, user, r.id);
   logTxn(db, { kitCode: `YC#${r.id}`, type: 'issue', material: r.material, qty: q, line: r.line, note: r.pass ? '' : 'Ngoại lệ đã duyệt', user });
@@ -581,6 +586,7 @@ export function cancelAlerts(db) {
 export function dropCancelled(db, { kitId }, user) {
   return tx(db, () => {
     const kit = loadKit(db, kitId), pos = kitPos(db, kit.id), gone = pos.filter(isCancelled);
+    assertNotErpKit(kit, 'gỡ PO');
     if (!gone.length) throw fail(`${kit.code} không có PO hủy.`);
     if (kit.vln_status === 'delivered') throw fail(`${kit.code} đã giao ${kit.line}: thu hồi từ line trước (Điều chỉnh kit → Thu hồi).`);
     const left = items(db, kit.id).filter(i => i.kitted > 0);
@@ -605,6 +611,7 @@ export function dropCancelled(db, { kitId }, user) {
 function internalPo(db, po) {
   const p = db.prepare('SELECT * FROM po WHERE po_key = ?').get(normalizePo(po));
   if (!p) throw fail('Không tìm thấy PO.', 404);
+  if (p.erp_req) throw fail(`${p.po_no} thuộc phiếu ERP ${p.erp_req}: sửa / hủy trên ERP.`);
   if (!PO_TYPES[p.po_type]) throw fail(`${p.po_no} không phải PO nội bộ (Unplan / RMA).`);
   if (isCancelled(p)) throw fail(`${p.po_no} đã hủy.`);
   const kit = db.prepare('SELECT k.* FROM kit_order_po x JOIN kit_order k ON k.id = x.kit_id WHERE x.po_key = ?').get(p.po_key) || null;

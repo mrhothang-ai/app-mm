@@ -12,6 +12,8 @@ routerAdd("POST", "/api/mmx/production", (e) => require(`${__hooks}/mm_lib.js`).
 // MES đẩy kế hoạch + số sản xuất từng PO (cùng khóa X-MM-Key): { schema: "MES.ProductionPlan.v1", data: {…} | [{…}] }; ?dry=1 = không ghi.
 // Kế hoạch Line theo ngày / ca từ Next ERP (Line Production Plan), 15 phút một lần — chỉ chạy khi đã bật trong Quản trị.
 cronAdd("mm_erp_line", "*/15 * * * *", () => require(`${__hooks}/mm_lib.js`).cronErpLines());
+// Phiếu yêu cầu vật tư ERP: phần Kho soạn thêm trên MM → báo ERP tạo Stock Entry (hàng chờ erp_report), 2 phút một lần — chỉ chạy khi đã bật.
+cronAdd("mm_erp_push", "*/2 * * * *", () => require(`${__hooks}/mm_lib.js`).cronErpPush());
 routerAdd("POST", "/api/mmx/po-plan", (e) => require(`${__hooks}/mm_lib.js`).serveMesPlanApi(e));
 
 // Chống dò mật khẩu: sai 5 lần trong 15 phút thì khóa đăng nhập Mã NV đó 15 phút.

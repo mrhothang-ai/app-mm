@@ -65,7 +65,7 @@ function kitView(db, kit, ro, printed) {
     fixedLine: pos.map(p => p.fixedLine).find(Boolean) || '', planLine: kit.plan_line || '', internal: pos.filter(p => p.poType !== 'SAP').map(p => ({ po: p.po, type: p.poType })),
     notes: pos.filter(p => p.note).map(p => ({ po: p.po, note: p.note })),
     loadTp: pos.filter(p => p.poType === 'LOAD').map(p => ({ po: p.po, modelCode: p.modelCode, qty: -p.planQty })),
-    locked: kit.vln_status !== 'pending' || kit.hv_status !== 'pending', printed: !!printed?.has(kit.code) };
+    locked: kit.vln_status !== 'pending' || kit.hv_status !== 'pending' || !!kit.erp_req, printed: !!printed?.has(kit.code), erp: kit.erp_req || '' };
 }
 
 // Thứ tự ưu tiên kitting (PO chưa giao line):
@@ -150,6 +150,7 @@ const kitLocked = kit => kit.vln_status !== 'pending' || kit.hv_status !== 'pend
 const kitPrinted = (db, kit) => !!db.prepare("SELECT 1 FROM kit_txn WHERE type = 'print' AND kit_code = ? LIMIT 1").get(kit.code);
 // Planner chỉ gộp / tách Kit khi Kho chưa bắt đầu kitting và chưa in phiếu.
 function assertKitFree(db, kit, act) {
+  if (kit.erp_req) throw fail(`${kit.code} là Kit của phiếu ERP ${kit.erp_req}: không ${act} được (sửa trên ERP).`);
   if (kitLocked(kit)) throw fail(`${kit.code} Kho đã bắt đầu kitting, không ${act} được.`);
   if (kitPrinted(db, kit)) throw fail(`${kit.code} Kho đã in phiếu kitting, không ${act} được.`);
 }
@@ -180,6 +181,7 @@ export function applyColumns(db, columns, username) {
         }
         const kit = loadKit(db, item.id);
         if (day === null) {
+          if (kit.erp_req) throw fail(`${kit.code} là Kit của phiếu ERP ${kit.erp_req}: không đưa về PO chưa lập được.`);
           if (kitLocked(kit)) throw fail(`${kit.code} đã bắt đầu kitting, không đưa về PO chưa lập được.`);
           if (kit.kind === 'single') { db.prepare('DELETE FROM kit_order WHERE id = ?').run(kit.id); moved++; return; }
           db.prepare("UPDATE kit_order SET plan_day = NULL, seq = ?, updated_at = datetime('now') WHERE id = ?").run(index, kit.id);
